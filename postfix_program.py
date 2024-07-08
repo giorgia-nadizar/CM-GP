@@ -52,7 +52,7 @@ def run_program(array, inp):
 
         if value < -NUM_OPERATORS:
             # Input variable
-            input_index = -value - NUM_OPERATORS - 1
+            input_index = -int(value) - NUM_OPERATORS - 1
 
             # Silently ignore input variables beyond the end of inp
             if input_index < len(inp):
@@ -61,7 +61,7 @@ def run_program(array, inp):
             continue
 
         # Operators
-        operator_index = -value - 1
+        operator_index = -int(value) - 1
         operator = OPERATORS[operator_index]
 
         if operator.function is None:
@@ -85,5 +85,7 @@ def run_program(array, inp):
         result = operator.function(*operands)
         stack.append(result)
 
+    return stack
+
 if __name__ == '__main__':
-    run_program([2.0, 1.0, -6, -7, -1, -1], [3.14, 6.28])
+    run_program([2.0, 1.0, -6.0, -7.0, -1.0, -1.0], [3.14, 6.28])

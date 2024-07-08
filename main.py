@@ -28,8 +28,19 @@ class ProgramOptimizer:
             actions is a batch of actions, shape (N, action_shape), we assume continuous actions
         """
         def fitness_func(ga_instance, solution, solution_idx):
-            print(solution)
-            return 0.0
+            batch_size = states.shape[0]
+            action_size = actions.shape[1]
+            sum_error = 0.0
+
+            for index in range(batch_size):
+                action = postfix_program.run_program(solution, states[index])
+                action = np.array(action + [0.0] * action_size)
+                action = action[:action_size]
+                desired_action = actions[index]
+
+                sum_error += np.mean((action - desired_action) ** 2)
+
+            return -(sum_error / batch_size)
 
         ga_instance = pygad.GA(num_generations=self.config.num_generations,
             num_parents_mating=self.config.num_parents_mating,
@@ -46,7 +57,9 @@ class ProgramOptimizer:
 
         # Allow the population to survive
         self.initial_population = ga_instance.population
-        print(self.initial_population)
+
+        # Print the best individual
+
 
 @pyrallis.wrap()
 def main(config: Config):
