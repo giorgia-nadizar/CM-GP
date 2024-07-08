@@ -1,3 +1,5 @@
+import sys
+
 import pygad
 import numpy as np
 import pyrallis
@@ -7,12 +9,12 @@ import postfix_program
 
 @dataclass
 class Config:
-    num_individuals: int = 10
-    num_genes: int = 30
+    num_individuals: int = 100
+    num_genes: int = 10
 
-    num_generations: int = 20
-    num_parents_mating: int = 10
-    keep_parents: int = 2
+    num_generations: int = 200
+    num_parents_mating: int = 30
+    keep_parents: int = 10
     mutation_percent_genes: int = 10
 
 class ProgramOptimizer:
@@ -27,6 +29,9 @@ class ProgramOptimizer:
         """ states is a batch of states, shape (N, state_shape)
             actions is a batch of actions, shape (N, action_shape), we assume continuous actions
         """
+        self.best_solution = None
+        self.best_fitness = None
+
         def fitness_func(ga_instance, solution, solution_idx):
             batch_size = states.shape[0]
             action_size = actions.shape[1]
@@ -38,9 +43,18 @@ class ProgramOptimizer:
                 action = action[:action_size]
                 desired_action = actions[index]
 
+                print(states[index], desired_action, action)
+
                 sum_error += np.mean((action - desired_action) ** 2)
 
-            return -(sum_error / batch_size)
+            fitness = -(sum_error / batch_size)
+
+            if self.best_fitness is None or fitness > self.best_fitness:
+                self.best_solution = solution
+                self.best_fitness = fitness
+
+            print('F', fitness, file=sys.stderr)
+            return fitness
 
         ga_instance = pygad.GA(num_generations=self.config.num_generations,
             num_parents_mating=self.config.num_parents_mating,
@@ -50,16 +64,18 @@ class ProgramOptimizer:
             keep_parents=self.config.keep_parents,
             crossover_type="single_point",
             mutation_type="random",
-            mutation_percent_genes=self.config.mutation_percent_genes
+            mutation_percent_genes=self.config.mutation_percent_genes,
+            random_mutation_max_val=100.0,
+            random_mutation_min_val=-100.0
         )
 
-        ga_instance.run()
+        print(ga_instance.run())
 
         # Allow the population to survive
         self.initial_population = ga_instance.population
 
         # Print the best individual
-
+        print(postfix_program.run_program(self.best_solution, states[0], do_print=True))
 
 @pyrallis.wrap()
 def main(config: Config):
@@ -72,7 +88,7 @@ def main(config: Config):
         [-5.0],
         [10.0],
     ])
-    actions = 2 * states
+    actions = states * 2
 
     # Fit
     optim.fit(states, actions)
