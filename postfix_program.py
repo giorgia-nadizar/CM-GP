@@ -19,7 +19,6 @@ class Operator:
         return self.name
 
 OPERATORS = [
-    Operator('<end>', 0, None),
     Operator('<',     2, lambda a, b: float(a < b)),
     Operator('>',     2, lambda a, b: float(a > b)),
     Operator('==',    2, lambda a, b: float(a == b)),
@@ -39,6 +38,7 @@ OPERATORS = [
     Operator('exp',   1, lambda a: math.exp(min(a, 10.0))),
     Operator('sqrt',  1, lambda a: math.sqrt(max(a, 0.0))),
     Operator('?',     3, lambda cond, a, b: a if cond > 0.5 else b),
+    Operator('<end>', 0, None),
 ]
 NUM_OPERATORS = len(OPERATORS)
 
@@ -104,5 +104,5 @@ def run_program(array, inp, do_print=False):
         return stack
 
 if __name__ == '__main__':
-    run_program([2.0, 1.0, -6.0, -7.0, -1.0, -1.0], [3.14, 6.28])
-    print(run_program([2.0, 1.0, -6.0, -7.0, -1.0, -1.0], [3.14, 6.28], do_print=True))
+    print(run_program([2.0, -21.0, -6.0, -1.0, -1.0], [3.14, 6.28]))
+    print(run_program([2.0, -21.0, -6.0, -1.0, -1.0], [3.14, 6.28], do_print=True))
