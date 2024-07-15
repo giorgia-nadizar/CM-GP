@@ -9,6 +9,9 @@
 # 2. Run that
 import math
 
+import numpy as np
+
+
 class Operator:
     def __init__(self, name, num_operands, function):
         self.name = name
@@ -18,91 +21,108 @@ class Operator:
     def __str__(self):
         return self.name
 
+
 OPERATORS = [
-    Operator('<',     2, lambda a, b: float(a < b)),
-    Operator('>',     2, lambda a, b: float(a > b)),
-    Operator('==',    2, lambda a, b: float(a == b)),
-    Operator('!=',    2, lambda a, b: float(a != b)),
-    Operator('+',     2, lambda a, b: a + b),
-    Operator('-',     2, lambda a, b: a - b),
-    Operator('*',     2, lambda a, b: a * b),
-    Operator('/',     2, lambda a, b: a / (1.0 if b == 0.0 else b)),
-    Operator('%',     2, lambda a, b: a % (1.0 if b == 0.0 else b)),
-    Operator('max',   2, lambda a, b: max(a, b)),
-    Operator('min',   2, lambda a, b: min(a, b)),
-    Operator('trunc', 1, lambda a: float(int(a))),
-    Operator('abs',   1, lambda a: abs(a)),
-    Operator('neg',   1, lambda a: -a),
-    Operator('sin',   1, lambda a: math.sin(a)),
-    Operator('cos',   1, lambda a: math.cos(a)),
-    Operator('exp',   1, lambda a: math.exp(min(a, 10.0))),
-    Operator('sqrt',  1, lambda a: math.sqrt(max(a, 0.0))),
-    Operator('?',     3, lambda cond, a, b: a if cond > 0.5 else b),
     Operator('<end>', 0, None),
+    Operator('<', 2, lambda a, b: float(a < b)),
+    Operator('>', 2, lambda a, b: float(a > b)),
+    Operator('==', 2, lambda a, b: float(a == b)),
+    Operator('!=', 2, lambda a, b: float(a != b)),
+    Operator('+', 2, lambda a, b: a + b),
+    Operator('-', 2, lambda a, b: a - b),
+    Operator('*', 2, lambda a, b: a * b),
+    Operator('/', 2, lambda a, b: a / (1.0 if b == 0.0 else b)),
+    Operator('%', 2, lambda a, b: a % (1.0 if b == 0.0 else b)),
+    Operator('max', 2, lambda a, b: max(a, b)),
+    Operator('min', 2, lambda a, b: min(a, b)),
+    Operator('trunc', 1, lambda a: float(int(a))),
+    Operator('abs', 1, lambda a: abs(a)),
+    Operator('neg', 1, lambda a: -a),
+    Operator('sin', 1, lambda a: math.sin(a)),
+    Operator('cos', 1, lambda a: math.cos(a)),
+    Operator('exp', 1, lambda a: math.exp(min(a, 10.0))),
+    Operator('sqrt', 1, lambda a: math.sqrt(max(a, 0.0))),
+    Operator('?', 3, lambda cond, a, b: a if cond > 0.5 else b),
 ]
 NUM_OPERATORS = len(OPERATORS)
 
-def run_program(array, inp, do_print=False):
-    stack = []
 
-    for value in array:
-        if value >= 0.0:
-            # Literal, push it
-            if do_print:
-                stack.append(str(value))
-            else:
-                stack.append(value)
+class Program:
+    def __init__(self, genome=None, size=None):
+        self.size = size
+        if genome:
+            self.genome = genome
+            self.size = len(genome)
+        else:
+            assert size is not None, "If genome is not specified, size must be given"
+            self.genome = np.ones(size)
 
-            continue
+    def __call__(self, inp, do_print=False):
+        res = self.run_program(inp, do_print=do_print)
+        return res
 
-        value = int(value)
+    def run_program(self, inp, do_print=False):
+        stack = []
 
-        if value < -NUM_OPERATORS:
-            # Input variable
-            input_index = -value - NUM_OPERATORS - 1
-
-            # Silently ignore input variables beyond the end of inp
-            if input_index < len(inp):
+        for value in self.genome:
+            if value >= 0.0:
+                # Literal, push it
                 if do_print:
-                    stack.append(f'x{input_index}')
+                    stack.append(str(value))
                 else:
-                    stack.append(inp[input_index])
+                    stack.append(value)
 
-            continue
+                continue
 
-        # Operators
-        operator_index = -value - 1
-        operator = OPERATORS[operator_index]
+            value = int(value)
+
+            if value < -NUM_OPERATORS:
+                # Input variable
+                input_index = -value - NUM_OPERATORS - 1
+
+                # Silently ignore input variables beyond the end of inp
+                if input_index < len(inp):
+                    if do_print:
+                        stack.append(f'x{input_index}')
+                    else:
+                        stack.append(inp[input_index])
+
+                continue
+
+            # Operators
+            operator_index = -value - 1
+            operator = OPERATORS[operator_index]
+
+            if do_print:
+                stack.append(operator.name)
+            else:
+                if operator.function is None:
+                    # End of program
+                    break
+
+                # Pop the operands
+                operands = []
+
+                for index in range(operator.num_operands):
+                    if len(stack) == 0:
+                        # If the stack is empty, "pop" a 1 from it.
+                        # 1 is neutral to mul, can be used for div, does something to add and sub
+                        operand = 1.0
+                    else:
+                        operand = stack.pop()
+
+                    operands.append(operand)
+
+                # Run the operator and get the result back
+                result = operator.function(*operands)
+                stack.append(result)
 
         if do_print:
-            stack.append(operator.name)
+            return ' '.join(stack)
         else:
-            if operator.function is None:
-                # End of program
-                break
+            return stack
 
-            # Pop the operands
-            operands = []
-
-            for index in range(operator.num_operands):
-                if len(stack) == 0:
-                    # If the stack is empty, "pop" a 1 from it.
-                    # 1 is neutral to mul, can be used for div, does something to add and sub
-                    operand = 1.0
-                else:
-                    operand = stack.pop()
-
-                operands.append(operand)
-
-            # Run the operator and get the result back
-            result = operator.function(*operands)
-            stack.append(result)
-
-    if do_print:
-        return ' '.join(stack)
-    else:
-        return stack
 
 if __name__ == '__main__':
-    print(run_program([2.0, -21.0, -6.0, -1.0, -1.0], [3.14, 6.28]))
-    print(run_program([2.0, -21.0, -6.0, -1.0, -1.0], [3.14, 6.28], do_print=True))
+    print(Program([2.0, -21.0, -6.0, -1.0, -1.0])([3.14, 6.28]))
+    print(Program([2.0, -21.0, -6.0, -1.0, -1.0])([3.14, 6.28], do_print=True))
