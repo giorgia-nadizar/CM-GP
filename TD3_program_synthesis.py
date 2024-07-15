@@ -14,6 +14,8 @@ import tyro
 from stable_baselines3.common.buffers import ReplayBuffer
 from torch.utils.tensorboard import SummaryWriter
 
+from postfix_program import Program
+
 
 @dataclass
 class Args:
@@ -33,7 +35,7 @@ class Args:
     """the entity (team) of wandb's project"""
     capture_video: bool = False
     """whether to capture videos of the agent performances (check out `videos` folder)"""
-    save_model: bool = True
+    save_model: bool = False
     """whether to save model into the `runs/{run_name}` folder"""
     upload_model: bool = False
     """whether to upload the saved model to huggingface"""
@@ -66,6 +68,10 @@ class Args:
     noise_clip: float = 0.5
     """noise clip parameter of the Target Policy Smoothing Regularization"""
 
+    # Parameters for the program
+    program_size: int = 10
+    """amount of genomes in the program"""
+
 
 def make_env(env_id, seed, idx, capture_video, run_name):
     def thunk():
@@ -85,7 +91,7 @@ def make_env(env_id, seed, idx, capture_video, run_name):
 class QNetwork(nn.Module):
     def __init__(self, env):
         super().__init__()
-        self.fc1 = nn.Linear(np.array(env.single_observation_space.shape).prod() + np.prod(env.single_action_space.shape), 256)
+        self.fc1 = nn.Linear(np.array(env.observation_space.shape).prod() + np.prod(env.action_space.shape), 256)
         self.fc2 = nn.Linear(256, 256)
         self.fc3 = nn.Linear(256, 1)
 
@@ -97,29 +103,21 @@ class QNetwork(nn.Module):
         return x
 
 if __name__ == "__main__":
-    import stable_baselines3 as sb3
-
-    if sb3.__version__ < "2.0":
-        raise ValueError(
-            """Ongoing migration: run the following command to install the new dependencies:
-poetry run pip install "stable_baselines3==2.0.0a1"
-"""
-        )
 
     args = tyro.cli(Args)
     run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
-    if args.track:
-        import wandb
-
-        wandb.init(
-            project=args.wandb_project_name,
-            entity=args.wandb_entity,
-            sync_tensorboard=True,
-            config=vars(args),
-            name=run_name,
-            monitor_gym=True,
-            save_code=True,
-        )
+    #if args.track:
+        # import wandb
+        #
+        # wandb.init(
+        #     project=args.wandb_project_name,
+        #     entity=args.wandb_entity,
+        #     sync_tensorboard=True,
+        #     config=vars(args),
+        #     name=run_name,
+        #     monitor_gym=True,
+        #     save_code=True,
+        # )
     writer = SummaryWriter(f"runs/{run_name}")
     writer.add_text(
         "hyperparameters",
@@ -139,43 +137,42 @@ poetry run pip install "stable_baselines3==2.0.0a1"
     env = gym.make(args.env_id, args.seed, 0, args.capture_video, run_name)
     assert isinstance(env.action_space, gym.spaces.Box), "only continuous action space is supported"
 
-    program = Program()
-    qf1 = QNetwork(envs).to(device)
-    qf2 = QNetwork(envs).to(device)
-    qf1_target = QNetwork(envs).to(device)
-    qf2_target = QNetwork(envs).to(device)
+    program = Program(genome=[-21, -22.0, -6.0])
+    qf1 = QNetwork(env).to(device)
+    qf2 = QNetwork(env).to(device)
+    qf1_target = QNetwork(env).to(device)
+    qf2_target = QNetwork(env).to(device)
     qf1_target.load_state_dict(qf1.state_dict())
     qf2_target.load_state_dict(qf2.state_dict())
     q_optimizer = optim.Adam(list(qf1.parameters()) + list(qf2.parameters()), lr=args.learning_rate)
 
-    envs.single_observation_space.dtype = np.float32
+    env.observation_space.dtype = np.float32
     rb = ReplayBuffer(
         args.buffer_size,
-        envs.single_observation_space,
-        envs.single_action_space,
+        env.observation_space,
+        env.action_space,
         device,
         handle_timeout_termination=False,
     )
     start_time = time.time()
 
     # TRY NOT TO MODIFY: start the game
-    obs, _ = envs.reset(seed=args.seed)
+    obs, _ = env.reset(seed=args.seed)
     for global_step in range(args.total_timesteps):
         # ALGO LOGIC: put action logic here
         if global_step < args.learning_starts:
-            actions = np.array([envs.single_action_space.sample() for _ in range(envs.num_envs)])
+            action = env.action_space.sample()
         else:
             with torch.no_grad():
-                actions = program(torch.Tensor(obs).to(device))
-                actions += torch.normal(0, program.action_scale * args.exploration_noise)
-                actions = actions.cpu().numpy().clip(envs.single_action_space.low, envs.single_action_space.high)
+                action = program(torch.Tensor(obs).to(device).detach().numpy())
+                #action = action.cpu().numpy().clip(env.action_space.low, env.action_space.high)
 
         # TRY NOT TO MODIFY: execute the game and log data.
-        next_obs, rewards, terminations, truncations, infos = envs.step(actions)
+        next_obs, reward, termination, truncation, info = env.step(action)
 
         # TRY NOT TO MODIFY: record rewards for plotting purposes
-        if "final_info" in infos:
-            for info in infos["final_info"]:
+        if "final_info" in info:
+            for info in info["final_info"]:
                 print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
                 writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
                 writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
@@ -183,10 +180,7 @@ poetry run pip install "stable_baselines3==2.0.0a1"
 
         # TRY NOT TO MODIFY: save data to reply buffer; handle `final_observation`
         real_next_obs = next_obs.copy()
-        for idx, trunc in enumerate(truncations):
-            if trunc:
-                real_next_obs[idx] = infos["final_observation"][idx]
-        rb.add(obs, real_next_obs, actions, rewards, terminations, infos)
+        rb.add(obs, real_next_obs, action, reward, termination, info)
 
         # TRY NOT TO MODIFY: CRUCIAL step easy to overlook
         obs = next_obs
@@ -197,11 +191,21 @@ poetry run pip install "stable_baselines3==2.0.0a1"
             with torch.no_grad():
                 clipped_noise = (torch.randn_like(data.actions, device=device) * args.policy_noise).clamp(
                     -args.noise_clip, args.noise_clip
-                ) * program.action_scale
-
-                next_state_actions = (program(data.next_observations) + clipped_noise).clamp(
-                    envs.single_action_space.low[0], envs.single_action_space.high[0]
                 )
+
+                # Go over all observations the buffer provides
+                next_state_actions = []
+                for i, data_obs in enumerate(data.next_observations):
+                    next_state_actions.append(
+                        (program(data_obs) + clipped_noise[i]).clamp(
+                        env.action_space.low[0], env.action_space.high[0])
+                    )
+                shp = (len(data.next_observations), 1)
+                next_state_actions = torch.tensor(next_state_actions)
+                next_state_actions = torch.tensor(next_state_actions).reshape(shp)
+                #next_state_actions = (program(data.next_observations) + clipped_noise).clamp(
+                #    env.action_space.low[0], env.action_space.high[0]
+                #)
                 qf1_next_target = qf1_target(data.next_observations, next_state_actions)
                 qf2_next_target = qf2_target(data.next_observations, next_state_actions)
                 min_qf_next_target = torch.min(qf1_next_target, qf2_next_target)
@@ -218,11 +222,11 @@ poetry run pip install "stable_baselines3==2.0.0a1"
             qf_loss.backward()
             q_optimizer.step()
 
-                # update the target network
-                for param, target_param in zip(qf1.parameters(), qf1_target.parameters()):
-                    target_param.data.copy_(args.tau * param.data + (1 - args.tau) * target_param.data)
-                for param, target_param in zip(qf2.parameters(), qf2_target.parameters()):
-                    target_param.data.copy_(args.tau * param.data + (1 - args.tau) * target_param.data)
+            # update the target network
+            for param, target_param in zip(qf1.parameters(), qf1_target.parameters()):
+                target_param.data.copy_(args.tau * param.data + (1 - args.tau) * target_param.data)
+            for param, target_param in zip(qf2.parameters(), qf2_target.parameters()):
+                target_param.data.copy_(args.tau * param.data + (1 - args.tau) * target_param.data)
 
             if global_step % 100 == 0:
                 writer.add_scalar("losses/qf1_values", qf1_a_values.mean().item(), global_step)
@@ -230,10 +234,10 @@ poetry run pip install "stable_baselines3==2.0.0a1"
                 writer.add_scalar("losses/qf1_loss", qf1_loss.item(), global_step)
                 writer.add_scalar("losses/qf2_loss", qf2_loss.item(), global_step)
                 writer.add_scalar("losses/qf_loss", qf_loss.item() / 2.0, global_step)
-                writer.add_scalar("losses/actor_loss", program_loss.item(), global_step)
+                #writer.add_scalar("losses/programm_loss", program_loss.item(), global_step)
                 print("SPS:", int(global_step / (time.time() - start_time)))
                 writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
 
 
-    envs.close()
+    env.close()
     writer.close()

@@ -33,7 +33,7 @@ class Args:
     """the entity (team) of wandb's project"""
     capture_video: bool = False
     """whether to capture videos of the agent performances (check out `videos` folder)"""
-    save_model: bool = True
+    save_model: bool = False
     """whether to save model into the `runs/{run_name}` folder"""
     upload_model: bool = False
     """whether to upload the saved model to huggingface"""
@@ -43,7 +43,7 @@ class Args:
     # Algorithm specific arguments
     env_id: str = "InvertedPendulum-v4"
     """the id of the environment"""
-    total_timesteps: int = 60000
+    total_timesteps: int = 600
     """total timesteps of the experiments"""
     learning_rate: float = 3e-4
     """the learning rate of the optimizer"""
@@ -59,7 +59,7 @@ class Args:
     """the scale of policy noise"""
     exploration_noise: float = 0.1
     """the scale of exploration noise"""
-    learning_starts: int = 25e3
+    learning_starts: int = 60
     """timestep to start learning"""
     policy_frequency: int = 2
     """the frequency of training policy (delayed)"""
@@ -130,18 +130,18 @@ poetry run pip install "stable_baselines3==2.0.0a1"
 
     args = tyro.cli(Args)
     run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
-    if args.track:
-        import wandb
-
-        wandb.init(
-            project=args.wandb_project_name,
-            entity=args.wandb_entity,
-            sync_tensorboard=True,
-            config=vars(args),
-            name=run_name,
-            monitor_gym=True,
-            save_code=True,
-        )
+    # if args.track:
+        # import wandb
+        #
+        # wandb.init(
+        #     project=args.wandb_project_name,
+        #     entity=args.wandb_entity,
+        #     sync_tensorboard=True,
+        #     config=vars(args),
+        #     name=run_name,
+        #     monitor_gym=True,
+        #     save_code=True,
+        # )
     writer = SummaryWriter(f"runs/{run_name}")
     writer.add_text(
         "hyperparameters",
