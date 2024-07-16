@@ -5,7 +5,7 @@ import numpy as np
 import pyrallis
 from dataclasses import dataclass
 
-import postfix_program
+from postfix_program import Program, NUM_OPERATORS
 
 N_INPUT_VARIABLES = 2
 
@@ -24,19 +24,25 @@ class Config:
 
 class ProgramOptimizer:
     def __init__(self, config: Config):
-        # Create the initial population
-        stopping_program = [-20.0] * config.num_genes
 
+        # Create the initial population
+        self.initial_program = [-1.0] * config.num_genes
+
+        self.best_solution = self.initial_program
+        self.best_fitness = None
 
         self.config = config
-        self.initial_population = [np.array(stopping_program) for i in range(config.num_individuals)]
+        self.initial_population = [np.array(self.initial_program) for i in range(config.num_individuals)]
+
+    def get_program(self):
+        return Program(genome=self.best_solution)
 
     def fit(self, states, actions):
         """ states is a batch of states, shape (N, state_shape)
             actions is a batch of actions, shape (N, action_shape), we assume continuous actions
         """
-        self.best_solution = None
-        self.best_fitness = None
+        #self.best_solution = None
+        #self.best_fitness = None
 
         def fitness_func(ga_instance, solution, solution_idx):
             batch_size = states.shape[0]
@@ -44,7 +50,8 @@ class ProgramOptimizer:
             sum_error = 0.0
 
             for index in range(batch_size):
-                action = postfix_program.run_program(solution, states[index])
+                program = self.get_program()
+                action = program.run_program(solution, states[index])
                 action = np.array(action + [0.0] * action_size)
                 action = action[:action_size]
                 desired_action = actions[index]
@@ -80,7 +87,7 @@ class ProgramOptimizer:
             random_mutation_max_val=10,
             random_mutation_min_val=-10,
             gene_space={
-                'low': -postfix_program.NUM_OPERATORS - N_INPUT_VARIABLES,
+                'low': -NUM_OPERATORS - N_INPUT_VARIABLES,
                 'high': 1.0
                 },
             keep_elitism=10,
@@ -93,7 +100,8 @@ class ProgramOptimizer:
         self.initial_population = self.ga_instance.population
 
         # Print the best individual
-        print(postfix_program.run_program(self.best_solution, states[0], do_print=True))
+        program = self.get_program()
+        print(program.run_program(self.best_solution, states[0], do_print=True))
 
 @pyrallis.wrap()
 def main(config: Config):

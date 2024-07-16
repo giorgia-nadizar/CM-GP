@@ -59,11 +59,19 @@ class Program:
             assert size is not None, "If genome is not specified, size must be given"
             self.genome = np.ones(size)
 
-    def __call__(self, inp, do_print=False):
+    def __call__(self, inp, len_output=None, do_print=False):
         res = self.run_program(inp, do_print=do_print)
-        res =  np.array(res)
-        #return res
-        return th.Tensor(res)
+
+        # If the desired output length is given, pad the result with zeroes if needed
+        if len_output:
+            res = np.array(res + [0.0] * len_output)
+            res = res[:len_output]
+
+        if do_print:
+            return res
+        else:
+            res = np.array(res)
+            return th.Tensor(res)
 
     def run_program(self, inp, do_print=False):
         stack = []
@@ -130,4 +138,4 @@ class Program:
 if __name__ == '__main__':
     print(Program([2.0, -21.0, -6.0, -1.0, -1.0])([3.14, 6.28]))
     print(Program([-21, -7.0, -6.0, -22.0, 0.0, 0.0, -1.0, -1.0])([1, 8]))
-    print(Program([2.0, -21.0, -6.0, -1.0, -1.0])([3.14, 6.28], do_print=True))
+    print(Program([5.0, -21.0, -6.0, -1.0, -1.0])([3.14, 6.28], do_print=True))

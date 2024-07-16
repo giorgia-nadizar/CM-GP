@@ -3,6 +3,7 @@ import os
 import random
 import time
 from dataclasses import dataclass
+import pyrallis
 
 import gymnasium as gym
 import numpy as np
@@ -14,6 +15,7 @@ import tyro
 from stable_baselines3.common.buffers import ReplayBuffer
 from torch.utils.tensorboard import SummaryWriter
 
+from optim import ProgramOptimizer
 from postfix_program import Program
 
 
@@ -68,9 +70,18 @@ class Args:
     noise_clip: float = 0.5
     """noise clip parameter of the Target Policy Smoothing Regularization"""
 
-    # Parameters for the program
+    # Parameters for the program optimizer
     program_size: int = 10
     """amount of genomes in the program"""
+
+    num_individuals: int = 1000
+    num_genes: int = 10
+
+    num_generations: int = 20
+    num_parents_mating: int = 10
+    keep_parents: int = 5
+    mutation_percent_genes: int = 10
+    keep_elites: int = 5
 
 
 def make_env(env_id, seed, idx, capture_video, run_name):
@@ -102,9 +113,10 @@ class QNetwork(nn.Module):
         x = self.fc3(x)
         return x
 
-if __name__ == "__main__":
+@pyrallis.wrap()
+def run_synthesis(args: Args):
 
-    args = tyro.cli(Args)
+    #args = tyro.cli(Args)
     run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
     #if args.track:
         # import wandb
@@ -137,7 +149,11 @@ if __name__ == "__main__":
     env = gym.make(args.env_id, args.seed, 0, args.capture_video, run_name)
     assert isinstance(env.action_space, gym.spaces.Box), "only continuous action space is supported"
 
-    program = Program(genome=[-21, -22.0, -6.0])
+    # Actor is a learnable program
+    #program = Program(size=args.program_size)
+    program_optimizer = ProgramOptimizer(args)
+
+
     qf1 = QNetwork(env).to(device)
     qf2 = QNetwork(env).to(device)
     qf1_target = QNetwork(env).to(device)
@@ -159,12 +175,16 @@ if __name__ == "__main__":
     # TRY NOT TO MODIFY: start the game
     obs, _ = env.reset(seed=args.seed)
     for global_step in range(args.total_timesteps):
+
+        # Get best program from optimizer
+        program = program_optimizer.get_program()
+
         # ALGO LOGIC: put action logic here
         if global_step < args.learning_starts:
             action = env.action_space.sample()
         else:
             with torch.no_grad():
-                action = program(torch.Tensor(obs).to(device).detach().numpy())
+                action = program(torch.Tensor(obs).to(device).detach().numpy(), len_output=env.action_space.shape[0])
                 #action = action.cpu().numpy().clip(env.action_space.low, env.action_space.high)
 
         # TRY NOT TO MODIFY: execute the game and log data.
@@ -197,7 +217,7 @@ if __name__ == "__main__":
                 next_state_actions = []
                 for i, data_obs in enumerate(data.next_observations):
                     next_state_actions.append(
-                        (program(data_obs) + clipped_noise[i]).clamp(
+                        (program(data_obs, len_output=env.action_space.shape[0]) + clipped_noise[i]).clamp(
                         env.action_space.low[0], env.action_space.high[0])
                     )
                 shp = (len(data.next_observations), 1)
@@ -241,3 +261,6 @@ if __name__ == "__main__":
 
     env.close()
     writer.close()
+
+if __name__ == "__main__":
+    run_synthesis()
