@@ -51,9 +51,9 @@ class ProgramOptimizer:
 
             for index in range(batch_size):
                 program = self.get_program()
-                action = program.run_program(solution, states[index])
-                action = np.array(action + [0.0] * action_size)
-                action = action[:action_size]
+                action = program(states[index], len_output=action_size)
+                #action = np.array(action + [0.0] * action_size)
+                #action = action[:action_size]
                 desired_action = actions[index]
 
                 #print(states[index], desired_action, action)
@@ -101,7 +101,7 @@ class ProgramOptimizer:
 
         # Print the best individual
         program = self.get_program()
-        print(program.run_program(self.best_solution, states[0], do_print=True))
+        #print(program(states[0], do_print=True))
 
 @pyrallis.wrap()
 def main(config: Config):

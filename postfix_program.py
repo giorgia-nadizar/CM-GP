@@ -52,7 +52,7 @@ NUM_OPERATORS = len(OPERATORS)
 class Program:
     def __init__(self, genome=None, size=None):
         self.size = size
-        if genome:
+        if genome is not None:
             self.genome = genome
             self.size = len(genome)
         else:
@@ -60,6 +60,7 @@ class Program:
             self.genome = np.ones(size)
 
     def __call__(self, inp, len_output=None, do_print=False):
+
         res = self.run_program(inp, do_print=do_print)
 
         # If the desired output length is given, pad the result with zeroes if needed
@@ -70,8 +71,8 @@ class Program:
         if do_print:
             return res
         else:
-            res = np.array(res)
-            return th.Tensor(res)
+            return np.array(res)
+            #return th.Tensor(res)
 
     def run_program(self, inp, do_print=False):
         stack = []
@@ -139,3 +140,4 @@ if __name__ == '__main__':
     print(Program([2.0, -21.0, -6.0, -1.0, -1.0])([3.14, 6.28]))
     print(Program([-21, -7.0, -6.0, -22.0, 0.0, 0.0, -1.0, -1.0])([1, 8]))
     print(Program([5.0, -21.0, -6.0, -1.0, -1.0])([3.14, 6.28], do_print=True))
+    print(Program([-2.538086, 0.334053, -17.267960, -18.188475, -18.504102, -6.522001, -6.147776, -16.242687, -1.000000, -4.448039])([1.0, 1.0], do_print=True))
