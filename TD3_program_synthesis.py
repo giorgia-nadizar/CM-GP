@@ -18,6 +18,8 @@ from torch.autograd import grad
 
 from optim import ProgramOptimizer
 
+import envs
+
 
 @dataclass
 class Args:
@@ -45,9 +47,9 @@ class Args:
     """the user or org name of the model repository from the Hugging Face Hub"""
 
     # Algorithm specific arguments
-    env_id: str = "InvertedPendulum-v4"
+    env_id: str = "SimpleActionOnly-v0"
     """the id of the environment"""
-    total_timesteps: int = 60000
+    total_timesteps: int = int(1e3)
     """total timesteps of the experiments"""
     learning_rate: float = 3e-4
     """the learning rate of the optimizer"""
@@ -57,13 +59,13 @@ class Args:
     """the discount factor gamma"""
     tau: float = 0.005
     """target smoothing coefficient (default: 0.005)"""
-    batch_size: int = 256
+    batch_size: int = 1
     """the batch size of sample from the reply memory"""
     policy_noise: float = 0.2
     """the scale of policy noise"""
     exploration_noise: float = 0.1
     """the scale of exploration noise"""
-    learning_starts: int = 25e3
+    learning_starts: int = total_timesteps / 2
     """timestep to start learning"""
     policy_frequency: int = 2
     """the frequency of training policy (delayed)"""
@@ -71,17 +73,14 @@ class Args:
     """noise clip parameter of the Target Policy Smoothing Regularization"""
 
     # Parameters for the program optimizer
-    program_size: int = 10
-    """amount of genomes in the program"""
+    num_individuals: int = 5
+    num_genes: int = 2
 
-    num_individuals: int = 1000
-    num_genes: int = 10
-
-    num_generations: int = 20
-    num_parents_mating: int = 5
-    keep_parents: int = 5
-    mutation_percent_genes: int = 20
-    keep_elites: int = 5
+    num_generations: int = 5
+    num_parents_mating: int = 3
+    keep_parents: int = 2
+    mutation_percent_genes: int = 50
+    keep_elites: int = 1
 
 
 def make_env(env_id, seed, idx, capture_video, run_name):
@@ -183,7 +182,10 @@ def run_synthesis(args: Args):
     for global_step in range(args.total_timesteps):
 
         # Get best program from optimizer
-        program = program_optimizer.get_program()
+        program = program_optimizer.get_best_program()
+        fitness = program_optimizer.best_fitness
+        # Print program
+        print(f'Best program: {program}, with fitness {fitness}')
 
         # ALGO LOGIC: put action logic here
         if global_step < args.learning_starts:
@@ -193,15 +195,13 @@ def run_synthesis(args: Args):
                 action = program(torch.Tensor(obs).to(device).detach().numpy(), len_output=env.action_space.shape[0])
 
         # TRY NOT TO MODIFY: execute the game and log data.
+        print(action)
         next_obs, reward, termination, truncation, info = env.step(action)
 
         # TRY NOT TO MODIFY: record rewards for plotting purposes
-        if "final_info" in info:
-            for info in info["final_info"]:
-                print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
-                writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
-                writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
-                break
+        print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
+        writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
+        writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
 
         # TRY NOT TO MODIFY: save data to reply buffer; handle `final_observation`
         real_next_obs = next_obs.copy()
@@ -245,11 +245,12 @@ def run_synthesis(args: Args):
                 program_actions = get_state_actions(program, data.observations, env, grad_required=True).float()
 
                 program_loss = -qf1(data.observations, program_actions).mean()
-                # program_loss.backward()
+                #program_loss.backward()
                 action_gradients = grad(program_loss, program_actions)
                 optimal_actions = program_actions + action_gradients[0]
                 program_optimizer.fit(states=data.observations.detach().numpy(),
                                       actions=optimal_actions.detach().numpy())
+                                      #actions=np.array([[0.5]]))
 
             # update the target network
             for param, target_param in zip(qf1.parameters(), qf1_target.parameters()):

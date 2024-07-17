@@ -14,6 +14,8 @@ import tyro
 from stable_baselines3.common.buffers import ReplayBuffer
 from torch.utils.tensorboard import SummaryWriter
 
+import envs
+
 
 @dataclass
 class Args:
@@ -41,7 +43,7 @@ class Args:
     """the user or org name of the model repository from the Hugging Face Hub"""
 
     # Algorithm specific arguments
-    env_id: str = "InvertedPendulum-v4"
+    env_id: str = "SimpleActionOnly-v0"
     """the id of the environment"""
     total_timesteps: int = 600
     """total timesteps of the experiments"""
@@ -130,18 +132,18 @@ poetry run pip install "stable_baselines3==2.0.0a1"
 
     args = tyro.cli(Args)
     run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
-    # if args.track:
-        # import wandb
-        #
-        # wandb.init(
-        #     project=args.wandb_project_name,
-        #     entity=args.wandb_entity,
-        #     sync_tensorboard=True,
-        #     config=vars(args),
-        #     name=run_name,
-        #     monitor_gym=True,
-        #     save_code=True,
-        # )
+    if args.track:
+        import wandb
+
+        wandb.init(
+            project=args.wandb_project_name,
+            entity=args.wandb_entity,
+            sync_tensorboard=True,
+            config=vars(args),
+            name=run_name,
+            monitor_gym=True,
+            save_code=True,
+        )
     writer = SummaryWriter(f"runs/{run_name}")
     writer.add_text(
         "hyperparameters",

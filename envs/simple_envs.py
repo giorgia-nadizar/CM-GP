@@ -19,7 +19,8 @@ class SimpleActionOnlyEnv(gym.Env):
             high=np.ones((1,))
         )
 
-    def reset(self):
+    def reset(self, seed, options={}):
+        random.seed(seed)
         return (np.zeros((1,)), {})
 
     def step(self, a):
@@ -44,7 +45,8 @@ class SimpleLargeActionEnv(gym.Env):
             high=np.ones((16,))
         )
 
-    def reset(self):
+    def reset(self, seed):
+        random.seed(seed)
         return (np.zeros((1,)), {})
 
     def step(self, a):
@@ -57,7 +59,8 @@ class SimpleTwoStatesEnv(SimpleActionOnlyEnv):
     """ Contextual bandit. 1-timestep episodes, each episode is in one of two possible states (selected at random). The reward function depends on the state
     """
 
-    def reset(self):
+    def reset(self, seed):
+        random.seed(seed)
         self.state = random.randrange(2)
 
         return (np.array([self.state], dtype=np.float32), {})
@@ -75,7 +78,8 @@ class SimpleSequenceEnv(SimpleTwoStatesEnv):
     """ 2 states, 10-timestep episodes, the action sometimes causes the agent to change state. Allows to check that V(s_t+1) is computed correctly by the agent
     """
 
-    def reset(self):
+    def reset(self, seed):
+        random.seed(seed)
         self.state = random.randrange(2)
         self.timestep = 0
 
@@ -118,7 +122,8 @@ class SimpleGoalEnv(gym.Env):
         )
         self.state = np.zeros((2,), dtype=np.float32)
 
-    def reset(self):
+    def reset(self, seed):
+        random.seed(seed)
         self.state[0] = random.random()
         self.state[1] = random.random()
         self._timestep = 0
