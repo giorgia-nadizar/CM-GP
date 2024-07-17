@@ -11,13 +11,12 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-import tyro
+
 from stable_baselines3.common.buffers import ReplayBuffer
 from torch.utils.tensorboard import SummaryWriter
 from torch.autograd import grad
 
 from optim import ProgramOptimizer
-from postfix_program import Program
 
 
 @dataclass
@@ -75,10 +74,10 @@ class Args:
     program_size: int = 10
     """amount of genomes in the program"""
 
-    num_individuals: int = 10
+    num_individuals: int = 1000
     num_genes: int = 10
 
-    num_generations: int = 5
+    num_generations: int = 20
     num_parents_mating: int = 5
     keep_parents: int = 5
     mutation_percent_genes: int = 20
@@ -114,23 +113,32 @@ class QNetwork(nn.Module):
         x = self.fc3(x)
         return x
 
+
+def get_state_actions(program, obs, env, grad_required=False):
+    program_actions = []
+    for i, o in enumerate(obs):
+        program_actions.append(program(o, len_output=env.action_space.shape[0]))
+    program_actions = torch.tensor(program_actions, requires_grad=grad_required)
+    shp = (len(obs), 1)
+    program_actions.reshape(shp)
+    return program_actions
+
+
 @pyrallis.wrap()
 def run_synthesis(args: Args):
-
-    #args = tyro.cli(Args)
     run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
     if args.track:
         import wandb
 
         wandb.init(
-             project=args.wandb_project_name,
-             entity=args.wandb_entity,
-             sync_tensorboard=True,
-             config=vars(args),
-             name=run_name,
-             monitor_gym=True,
-             save_code=True,
-         )
+            project=args.wandb_project_name,
+            entity=args.wandb_entity,
+            sync_tensorboard=True,
+            config=vars(args),
+            name=run_name,
+            monitor_gym=True,
+            save_code=True,
+        )
     writer = SummaryWriter(f"runs/{run_name}")
     writer.add_text(
         "hyperparameters",
@@ -146,14 +154,11 @@ def run_synthesis(args: Args):
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
 
     # env setup
-    #envs = gym.vector.SyncVectorEnv([make_env(args.env_id, args.seed, 0, args.capture_video, run_name)])
     env = make_env(args.env_id, args.seed, 0, args.capture_video, run_name)()
     assert isinstance(env.action_space, gym.spaces.Box), "only continuous action space is supported"
 
     # Actor is a learnable program
-    #program = Program(size=args.program_size)
     program_optimizer = ProgramOptimizer(args)
-
 
     qf1 = QNetwork(env).to(device)
     qf2 = QNetwork(env).to(device)
@@ -186,7 +191,6 @@ def run_synthesis(args: Args):
         else:
             with torch.no_grad():
                 action = program(torch.Tensor(obs).to(device).detach().numpy(), len_output=env.action_space.shape[0])
-                #action = action.cpu().numpy().clip(env.action_space.low, env.action_space.high)
 
         # TRY NOT TO MODIFY: execute the game and log data.
         next_obs, reward, termination, truncation, info = env.step(action)
@@ -215,19 +219,15 @@ def run_synthesis(args: Args):
                 )
 
                 # Go over all observations the buffer provides
-                next_state_actions = []
-                for i, data_obs in enumerate(data.next_observations):
-                    next_state_actions.append(
-                        torch.tensor(program(data_obs, len_output=env.action_space.shape[0]))
-                        + clipped_noise[i].clamp(
-                        env.action_space.low[0], env.action_space.high[0]))
-                shp = (len(data.next_observations), 1)
-                next_state_actions = torch.tensor(next_state_actions).reshape(shp).float()
+                next_state_actions = get_state_actions(program, data.next_observations, env)
+                next_state_actions = (next_state_actions + clipped_noise).clamp(
+                    env.action_space.low[0], env.action_space.high[0]).float()
 
                 qf1_next_target = qf1_target(data.next_observations, next_state_actions)
                 qf2_next_target = qf2_target(data.next_observations, next_state_actions)
                 min_qf_next_target = torch.min(qf1_next_target, qf2_next_target)
-                next_q_value = data.rewards.flatten() + (1 - data.dones.flatten()) * args.gamma * (min_qf_next_target).view(-1)
+                next_q_value = data.rewards.flatten() + (1 - data.dones.flatten()) * args.gamma * (
+                    min_qf_next_target).view(-1)
 
             qf1_a_values = qf1(data.observations, data.actions).view(-1)
             qf2_a_values = qf2(data.observations, data.actions).view(-1)
@@ -240,21 +240,12 @@ def run_synthesis(args: Args):
             qf_loss.backward()
             q_optimizer.step()
 
-
             # Optimize the program
             if global_step % args.policy_frequency == 0:
-
-                program_actions = []
-                for i, data_obs in enumerate(data.next_observations):
-                    program_actions.append(
-                        torch.tensor(program(data_obs, len_output=env.action_space.shape[0]))
-                        + clipped_noise[i].clamp(
-                        env.action_space.low[0], env.action_space.high[0]))
-                shp = (len(data.next_observations), 1)
-                program_actions = torch.tensor(program_actions, requires_grad=True).reshape(shp).float()
+                program_actions = get_state_actions(program, data.observations, env, grad_required=True).float()
 
                 program_loss = -qf1(data.observations, program_actions).mean()
-                #program_loss.backward()
+                # program_loss.backward()
                 action_gradients = grad(program_loss, program_actions)
                 optimal_actions = program_actions + action_gradients[0]
                 program_optimizer.fit(states=data.observations.detach().numpy(),
@@ -275,9 +266,9 @@ def run_synthesis(args: Args):
                 writer.add_scalar("losses/programm_loss", program_loss.item(), global_step)
                 writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
 
-
     env.close()
     writer.close()
+
 
 if __name__ == "__main__":
     run_synthesis()
