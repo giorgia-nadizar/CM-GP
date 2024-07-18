@@ -67,8 +67,8 @@ class ProgramOptimizer:
                                     crossover_type="single_point",
                                     mutation_type="random",
                                     mutation_percent_genes=self.config.mutation_percent_genes,
-                                    random_mutation_max_val=10,
-                                    random_mutation_min_val=-10,
+                                    random_mutation_max_val=5,
+                                    random_mutation_min_val=-5,
                                     gene_space={
                                         'low': -NUM_OPERATORS - N_INPUT_VARIABLES,
                                         'high': 1.0
@@ -85,6 +85,7 @@ class ProgramOptimizer:
         # Print the best individual
         #program = self.get_best_program()
         #print(program(states[0], do_print=True))
+        #self.ga_instance.plot_fitness()
 
 
 @dataclass
@@ -126,7 +127,6 @@ def main(config: Config):
 
     # Plot
     optim.ga_instance.plot_fitness()
-    print('done')
 
 
 if __name__ == '__main__':
