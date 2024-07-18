@@ -7,21 +7,17 @@ from dataclasses import dataclass
 
 from postfix_program import Program, NUM_OPERATORS
 
-N_INPUT_VARIABLES = 1
-
 class ProgramOptimizer:
     def __init__(self, config):
 
         # Create the initial population
-        self.initial_program = [-1.0] * config.num_genes
+        self.initial_program = [-1.0] * (config.num_genes * 2)  # Mean and log_std for each gene
 
         self.best_solution = self.initial_program
         self.best_fitness = None
 
         self.config = config
         self.initial_population = [np.array(self.initial_program) for i in range(config.num_individuals)]
-
-        self.f = None
 
     def get_best_program(self):
         return Program(genome=self.best_solution)
@@ -38,55 +34,46 @@ class ProgramOptimizer:
 
             program = Program(genome=solution)
 
-            for index in range(batch_size):
-                action = program(states[index], len_output=action_size)
-                desired_action = actions[index]
+            # Evaluate the program several times, because evaluations are stochastic
+            for eval_run in range(self.config.num_eval_runs):
+                for index in range(batch_size):
+                    action = program(states[index], len_output=action_size)
+                    desired_action = actions[index]
 
-                sum_error += np.mean((action - desired_action) ** 2)
+                    sum_error += np.mean((action - desired_action) ** 2)
 
-            fitness = -(sum_error / batch_size)
+            fitness = -(sum_error / (batch_size + self.config.num_eval_runs))
 
-            # !!!!
             if self.best_fitness is None or fitness > self.best_fitness:
                 self.best_solution = solution
                 self.best_fitness = fitness
 
-            #print('F', fitness, file=sys.stderr)
             return fitness
 
+        self.ga_instance = pygad.GA(
+            fitness_func=fitness_func,
+            initial_population=self.initial_population,
+            num_generations=self.config.num_generations,
+            num_parents_mating=self.config.num_parents_mating,
+            keep_parents=self.config.keep_parents,
+            mutation_percent_genes=self.config.mutation_percent_genes,
 
-        self.ga_instance = pygad.GA(num_generations=self.config.num_generations,
-                                    #parallel_processing=8,
-                                    save_solutions=True,
-                                    save_best_solutions=True,
-                                    num_parents_mating=self.config.num_parents_mating,
-                                    fitness_func=fitness_func,
-                                    initial_population=self.initial_population,
-                                    parent_selection_type="sss",
-                                    keep_parents=self.config.keep_parents,
-                                    crossover_type="single_point",
-                                    mutation_type="random",
-                                    mutation_percent_genes=self.config.mutation_percent_genes,
-                                    random_mutation_max_val=5,
-                                    random_mutation_min_val=-5,
-                                    gene_space={
-                                        'low': -NUM_OPERATORS - N_INPUT_VARIABLES,
-                                        'high': 1.0
-                                    },
-                                    keep_elitism=1,
-                                    )
+            # Work with non-deterministic objective functions
+            keep_elitism=0,
+            save_solutions=False,
+            save_best_solutions=False,
+
+            parent_selection_type="sss",
+            crossover_type="single_point",
+            mutation_type="random",
+            random_mutation_max_val=10,
+            random_mutation_min_val=-10,
+        )
 
         self.ga_instance.run()
 
         # Allow the population to survive
         self.initial_population = self.ga_instance.population
-        self.f = self.ga_instance.population
-
-        # Print the best individual
-        #program = self.get_best_program()
-        #print(program(states[0], do_print=True))
-        #self.ga_instance.plot_fitness()
-
 
 @dataclass
 class Config:

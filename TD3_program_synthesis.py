@@ -61,13 +61,13 @@ class Args:
     """the discount factor gamma"""
     tau: float = 0.005
     """target smoothing coefficient (default: 0.005)"""
-    batch_size: int = 1
+    batch_size: int = 32
     """the batch size of sample from the reply memory"""
     policy_noise: float = 0.2
     """the scale of policy noise"""
     exploration_noise: float = 0.1
     """the scale of exploration noise"""
-    learning_starts: int = 0.1 * total_timesteps
+    learning_starts: int = 256
     """timestep to start learning"""
     policy_frequency: int = 3
     """the frequency of training policy (delayed)"""
@@ -75,14 +75,14 @@ class Args:
     """noise clip parameter of the Target Policy Smoothing Regularization"""
 
     # Parameters for the program optimizer
-    num_individuals: int = 10
-    num_genes: int = 2
+    num_individuals: int = 100
+    num_genes: int = 5
+    num_eval_runs: int = 10
 
-    num_generations: int = 10
-    num_parents_mating: int = 2
-    keep_parents: int = 1
+    num_generations: int = 20
+    num_parents_mating: int = 50
+    keep_parents: int = 5
     mutation_percent_genes: int = 10
-    keep_elites: int = 1
 
 
 def make_env(env_id, seed, idx, capture_video, run_name):
@@ -115,14 +115,19 @@ class QNetwork(nn.Module):
         return x
 
 
-def get_state_actions(program, obs, env, grad_required=False):
+def get_state_actions(program, obs, env, args, grad_required=False):
     program_actions = []
     obs = obs.detach().numpy()
+
     for i, o in enumerate(obs):
-        program_actions.append(program(o, len_output=env.action_space.shape[0]))
+        action = np.zeros(env.action_space.shape, dtype=np.float32)
+
+        for eval_run in range(args.num_eval_runs):
+            action += program(o, len_output=env.action_space.shape[0])
+
+        program_actions.append(action / args.num_eval_runs)
+
     program_actions = torch.tensor(program_actions, requires_grad=grad_required)
-    shp = (len(obs), 1)
-    program_actions.reshape(shp)
     return program_actions
 
 
@@ -222,7 +227,7 @@ def run_synthesis(args: Args):
                 )
 
                 # Go over all observations the buffer provides
-                next_state_actions = get_state_actions(program, data.next_observations, env)
+                next_state_actions = get_state_actions(program, data.next_observations, env, args)
                 next_state_actions = (next_state_actions + clipped_noise).clamp(
                     env.action_space.low[0], env.action_space.high[0]).float()
 
@@ -246,12 +251,14 @@ def run_synthesis(args: Args):
 
             # Optimize the program
             if global_step % args.policy_frequency == 0:
-                program_actions = get_state_actions(program, data.observations, env, grad_required=True).float()
+                program_actions = get_state_actions(program, data.observations, env, args, grad_required=True)
 
-                program_loss = -qf1(data.observations, program_actions).mean()
-                #program_loss.backward()
-                action_gradients = grad(program_loss, program_actions)
-                improved_actions = program_actions - (10e-2 * action_gradients[0])
+                program_objective = qf1(data.observations, program_actions).mean()
+                program_objective.backward()
+
+                improved_actions = program_actions + 0.1 * program_actions.grad
+                print(program_actions, improved_actions)
+
                 RES.append(improved_actions[0].detach().numpy())
                 program_optimizer.fit(states=data.observations.detach().numpy(),
                                       actions=improved_actions.detach().numpy())
@@ -269,7 +276,7 @@ def run_synthesis(args: Args):
                 writer.add_scalar("losses/qf1_loss", qf1_loss.item(), global_step)
                 writer.add_scalar("losses/qf2_loss", qf2_loss.item(), global_step)
                 writer.add_scalar("losses/qf_loss", qf_loss.item() / 2.0, global_step)
-                writer.add_scalar("losses/programm_loss", program_loss.item(), global_step)
+                writer.add_scalar("losses/program_objective", program_objective.item(), global_step)
                 writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
 
     env.close()

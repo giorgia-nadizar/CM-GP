@@ -5,14 +5,14 @@
 # Input variables  # negative, we can have many of them
 # <end>            # OPERATOR_END
 #
-# 1. PyGAD produces numpy arrays (lists of floats), turn them into <see above>
+# 1. PyGAD produces numpy arrays (lists of floats). Look at them in pairs of (mean, variance).
+#    sample a value from that normal distribution, and transform the sample to one
+#    of the tokens listed above
 # 2. Run that
+#
+# Format: genes are floats. We
 import math
-
 import numpy as np
-
-import torch as th
-
 
 class Operator:
     def __init__(self, name, num_operands, function):
@@ -50,36 +50,36 @@ NUM_OPERATORS = len(OPERATORS)
 
 
 class Program:
-    def __init__(self, genome=None, size=None):
-        self.size = size
-        if genome is not None:
-            self.genome = genome
-            self.size = len(genome)
-        else:
-            assert size is not None, "If genome is not specified, size must be given"
-            self.genome = np.ones(size)
+    def __init__(self, genome):
+        self.genome = genome
 
     def __str__(self):
-        return f'{self.run_program(inp=[1], do_print=True)}'
+        return repr(self.run_program(inp=[1], do_print=True))
 
-    def __call__(self, inp, len_output=None, do_print=False):
-
-        res = self.run_program(inp, do_print=do_print)
+    def __call__(self, inp, len_output=None):
+        res = self.run_program(inp, do_print=False)
 
         # If the desired output length is given, pad the result with zeroes if needed
         if len_output:
-            res = np.array(res + [0.0] * len_output)
+            res = np.array(res + [0.0] * len_output, dtype=np.float32)
             res = res[:len_output]
 
-        if do_print:
-            return res
-        else:
-            return np.array(res)
+        return res
 
     def run_program(self, inp, do_print=False):
         stack = []
 
-        for value in self.genome:
+        for pointer in range(0, len(self.genome), 2):
+            # Sample the actual token to execute
+            mean = self.genome[pointer + 0]
+            log_std = self.genome[pointer + 1]
+
+            if log_std > 10.0:
+                log_std = 10.0      # Prevent exp() from overflowing
+
+            value = np.random.normal(loc=mean, scale=math.exp(log_std))
+
+            # Execute the token
             if value >= 0.0:
                 # Literal, push it
                 if do_print:
@@ -139,7 +139,5 @@ class Program:
 
 
 if __name__ == '__main__':
-    print(Program([2.0, -21.0, -6.0, -1.0, -1.0])([3.14, 6.28]))
-    print(Program([-21, -7.0, -6.0, -22.0, 0.0, 0.0, -1.0, -1.0])([1, 8]))
-    print(Program([5.0, -21.0, -6.0, -1.0, -1.0])([3.14, 6.28], do_print=True))
-    print(Program([-17.0])([0.0], len_output=1, do_print=False))
+    print(Program([5.0, 1.0, -21.0, -2.0]).run_program([3.14, 6.28], do_print=True))
+    print(Program([-17.0, 0.0]).run_program([0.0], do_print=False))
