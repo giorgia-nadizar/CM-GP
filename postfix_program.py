@@ -25,11 +25,12 @@ class Operator:
 
 
 OPERATORS = [
-    Operator('<end>', 0, None),
-    Operator('<', 2, lambda a, b: float(a < b)),
-    Operator('>', 2, lambda a, b: float(a > b)),
-    Operator('==', 2, lambda a, b: float(a == b)),
-    Operator('!=', 2, lambda a, b: float(a != b)),
+    Operator('abs', 1, lambda a: abs(a)),
+    Operator('sin', 1, lambda a: math.sin(a)),
+    Operator('cos', 1, lambda a: math.cos(a)),
+    Operator('exp', 1, lambda a: math.exp(min(a, 10.0))),
+    Operator('sqrt', 1, lambda a: math.sqrt(max(a, 0.0))),
+    Operator('neg', 1, lambda a: -a),
     Operator('+', 2, lambda a, b: a + b),
     Operator('-', 2, lambda a, b: a - b),
     Operator('*', 2, lambda a, b: a * b),
@@ -38,13 +39,12 @@ OPERATORS = [
     Operator('max', 2, lambda a, b: max(a, b)),
     Operator('min', 2, lambda a, b: min(a, b)),
     Operator('trunc', 1, lambda a: float(int(a))),
-    Operator('abs', 1, lambda a: abs(a)),
-    Operator('neg', 1, lambda a: -a),
-    Operator('sin', 1, lambda a: math.sin(a)),
-    Operator('cos', 1, lambda a: math.cos(a)),
-    Operator('exp', 1, lambda a: math.exp(min(a, 10.0))),
-    Operator('sqrt', 1, lambda a: math.sqrt(max(a, 0.0))),
+    Operator('<', 2, lambda a, b: float(a < b)),
+    Operator('>', 2, lambda a, b: float(a > b)),
+    Operator('==', 2, lambda a, b: float(a == b)),
+    Operator('!=', 2, lambda a, b: float(a != b)),
     Operator('?', 3, lambda cond, a, b: a if cond > 0.5 else b),
+    Operator('<end>', 0, None),
 ]
 NUM_OPERATORS = len(OPERATORS)
 
@@ -56,15 +56,13 @@ class Program:
     def __str__(self):
         return repr(self.run_program(inp=[1], do_print=True))
 
-    def __call__(self, inp, len_output=None):
+    def __call__(self, inp):
         res = self.run_program(inp, do_print=False)
 
-        # If the desired output length is given, pad the result with zeroes if needed
-        if len_output:
-            res = np.array(res + [0.0] * len_output, dtype=np.float32)
-            res = res[:len_output]
-
-        return res
+        if len(res) == 0:
+            return 0.0
+        else:
+            return res[-1]
 
     def run_program(self, inp, do_print=False):
         stack = []
@@ -96,10 +94,10 @@ class Program:
                 input_index = -value - NUM_OPERATORS - 1
 
                 # Silently ignore input variables beyond the end of inp
-                if input_index < len(inp):
-                    if do_print:
-                        stack.append(f'x{input_index}')
-                    else:
+                if do_print:
+                    stack.append(f'x{input_index}')
+                else:
+                    if input_index < len(inp):
                         stack.append(inp[input_index])
 
                 continue

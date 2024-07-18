@@ -8,10 +8,11 @@ from dataclasses import dataclass
 from postfix_program import Program, NUM_OPERATORS
 
 class ProgramOptimizer:
-    def __init__(self, config):
+    def __init__(self, config, action_shape):
 
         # Create the initial population
-        self.initial_program = [-1.0] * (config.num_genes * 2)  # Mean and log_std for each gene
+        self.action_shape = action_shape
+        self.initial_program = [0.0] * (config.num_genes * 2 * action_shape[0])  # Mean and log_std for each gene, for each action dimension
 
         self.best_solution = self.initial_program
         self.best_fitness = None
@@ -19,39 +20,48 @@ class ProgramOptimizer:
         self.config = config
         self.initial_population = [np.array(self.initial_program) for i in range(config.num_individuals)]
 
-    def get_best_program(self):
-        return Program(genome=self.best_solution)
+    def get_actions_from_solution(self, solution, state):
+        # One program per action dimension
+        program_length = self.config.num_genes * 2
+        programs = [
+            Program(genome=solution[i*program_length : (i+1)*program_length])
+            for i in range(self.action_shape[0])
+        ]
+
+        return np.array([p(state) for p in programs], dtype=np.float32)
+
+    def print_best_solution(self):
+        program_length = self.config.num_genes * 2
+
+        for i in range(self.action_shape[0]):
+            p = Program(genome=self.best_solution[i*program_length : (i+1)*program_length])
+            print(f'a[{i}] =', p.run_program([0.0], do_print=True))
+
+    def _fitness_func(self, ga_instance, solution, solution_idx):
+        batch_size = self.states.shape[0]
+        sum_error = 0.0
+
+        # Evaluate the program several times, because evaluations are stochastic
+        for eval_run in range(self.config.num_eval_runs):
+            for index in range(batch_size):
+                action = self.get_actions_from_solution(solution, self.states[index])
+                desired_action = self.actions[index]
+
+                sum_error += np.mean((action - desired_action) ** 2)
+
+        fitness = -(sum_error / (batch_size + self.config.num_eval_runs))
+
+        return fitness
 
     def fit(self, states, actions):
         """ states is a batch of states, shape (N, state_shape)
             actions is a batch of actions, shape (N, action_shape), we assume continuous actions
         """
-
-        def fitness_func(ga_instance, solution, solution_idx):
-            batch_size = states.shape[0]
-            action_size = actions.shape[1]
-            sum_error = 0.0
-
-            program = Program(genome=solution)
-
-            # Evaluate the program several times, because evaluations are stochastic
-            for eval_run in range(self.config.num_eval_runs):
-                for index in range(batch_size):
-                    action = program(states[index], len_output=action_size)
-                    desired_action = actions[index]
-
-                    sum_error += np.mean((action - desired_action) ** 2)
-
-            fitness = -(sum_error / (batch_size + self.config.num_eval_runs))
-
-            if self.best_fitness is None or fitness > self.best_fitness:
-                self.best_solution = solution
-                self.best_fitness = fitness
-
-            return fitness
+        self.states = states        # picklable self._fitness_func needs these instance variables
+        self.actions = actions
 
         self.ga_instance = pygad.GA(
-            fitness_func=fitness_func,
+            fitness_func=self._fitness_func,
             initial_population=self.initial_population,
             num_generations=self.config.num_generations,
             num_parents_mating=self.config.num_parents_mating,
@@ -68,12 +78,16 @@ class ProgramOptimizer:
             mutation_type="random",
             random_mutation_max_val=10,
             random_mutation_min_val=-10,
+            parallel_processing=["process", None]
         )
 
         self.ga_instance.run()
 
         # Allow the population to survive
         self.initial_population = self.ga_instance.population
+
+        # Best solution for now
+        self.best_solution = self.ga_instance.best_solution()[0]
 
 @dataclass
 class Config:
