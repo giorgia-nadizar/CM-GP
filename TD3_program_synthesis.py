@@ -75,12 +75,12 @@ class Args:
     """noise clip parameter of the Target Policy Smoothing Regularization"""
 
     # Parameters for the program optimizer
-    num_individuals: int = 100
+    num_individuals: int = 50
     num_genes: int = 4
     num_eval_runs: int = 10
 
     num_generations: int = 20
-    num_parents_mating: int = 50
+    num_parents_mating: int = 20
     keep_parents: int = 5
     mutation_percent_genes: int = 10
 
@@ -115,24 +115,19 @@ class QNetwork(nn.Module):
         return x
 
 
-def get_state_actions(program_optimizer, obs, env, args, grad_required=False):
+def get_state_actions(program_optimizers, obs, env, args):
     program_actions = []
-    obs = obs.detach().numpy()
 
     for i, o in enumerate(obs):
         action = np.zeros(env.action_space.shape, dtype=np.float32)
 
-        for eval_run in range(1):
-            action += program_optimizer.get_actions_from_solution(
-                program_optimizer.best_solution,
-                o
-            )
+        for eval_run in range(args.num_eval_runs):
+            for action_index in range(env.action_space.shape[0]):
+                action[action_index] += program_optimizers[action_index].get_action(o)
 
         program_actions.append(action / args.num_eval_runs)
 
-    program_actions = torch.tensor(np.array(program_actions), requires_grad=grad_required)
-    return program_actions
-
+    return np.array(program_actions)
 
 @pyrallis.wrap()
 def run_synthesis(args: Args):
@@ -168,7 +163,7 @@ def run_synthesis(args: Args):
     assert isinstance(env.action_space, gym.spaces.Box), "only continuous action space is supported"
 
     # Actor is a learnable program
-    program_optimizer = ProgramOptimizer(args, env.action_space.shape)
+    program_optimizers = [ProgramOptimizer(args) for i in range(env.action_space.shape[0])]
 
     qf1 = QNetwork(env).to(device)
     qf2 = QNetwork(env).to(device)
@@ -198,10 +193,8 @@ def run_synthesis(args: Args):
             action = env.action_space.sample()
         else:
             with torch.no_grad():
-                action = program_optimizer.get_actions_from_solution(
-                    program_optimizer.best_solution,
-                    obs
-                )
+                action = get_state_actions(program_optimizers, obs[None, :], env, args)[0]
+                print('ACTION', action)
 
         # TRY NOT TO MODIFY: execute the game and log data.
         next_obs, reward, termination, truncation, info = env.step(action)
@@ -227,7 +220,8 @@ def run_synthesis(args: Args):
                 )
 
                 # Go over all observations the buffer provides
-                next_state_actions = get_state_actions(program_optimizer, data.next_observations, env, args)
+                next_state_actions = get_state_actions(program_optimizers, data.next_observations.detach().numpy(), env, args)
+                next_state_actions = torch.tensor(next_state_actions)
                 next_state_actions = (next_state_actions + clipped_noise).clamp(
                     env.action_space.low[0], env.action_space.high[0]).float()
 
@@ -251,7 +245,8 @@ def run_synthesis(args: Args):
 
             # Optimize the program
             if global_step % args.policy_frequency == 0:
-                program_actions = get_state_actions(program_optimizer, data.observations, env, args, grad_required=True)
+                program_actions = get_state_actions(program_optimizers, data.observations.detach().numpy(), env, args)
+                program_actions = torch.tensor(program_actions, requires_grad=True)
 
                 program_objective = qf1(data.observations, program_actions).mean()
                 program_objective.backward()
@@ -259,11 +254,16 @@ def run_synthesis(args: Args):
                 improved_actions = program_actions + 0.1 * program_actions.grad
 
                 RES.append(improved_actions[0].detach().numpy())
-                program_optimizer.fit(states=data.observations.detach().numpy(),
-                                      actions=improved_actions.detach().numpy())
+
+                # Fit the program optimizers on all the action dimensions
+                states = data.observations.detach().numpy()
+                actions = improved_actions.detach().numpy()
+
+                for action_index in range(env.action_space.shape[0]):
+                    program_optimizers[action_index].fit(states, actions[:, action_index])
 
                 # Print program
-                program_optimizer.print_best_solution()
+                program_optimizers.print_best_solution()
 
             # update the target network
             for param, target_param in zip(qf1.parameters(), qf1_target.parameters()):
