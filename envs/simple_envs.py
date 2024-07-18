@@ -19,9 +19,8 @@ class SimpleActionOnlyEnv(gym.Env):
             high=np.ones((1,))
         )
 
-    def reset(self, seed, options={}):
-        random.seed(seed)
-        return (np.zeros((1,)), {})
+    def reset(self, **kwargs):
+        return np.zeros((1,)), {}
 
     def step(self, a):
         reward = np.sin(a * 3.1516).sum()
@@ -45,9 +44,8 @@ class SimpleLargeActionEnv(gym.Env):
             high=np.ones((16,))
         )
 
-    def reset(self, seed):
-        random.seed(seed)
-        return (np.zeros((1,)), {})
+    def reset(self, **kwargs):
+        return np.zeros((1,)), {}
 
     def step(self, a):
         reward = np.sin(a * 3.1516).sum()
@@ -59,11 +57,10 @@ class SimpleTwoStatesEnv(SimpleActionOnlyEnv):
     """ Contextual bandit. 1-timestep episodes, each episode is in one of two possible states (selected at random). The reward function depends on the state
     """
 
-    def reset(self, seed):
-        random.seed(seed)
+    def reset(self, **kwargs):
         self.state = random.randrange(2)
 
-        return (np.array([self.state], dtype=np.float32), {})
+        return np.array([self.state], dtype=np.float32), {}
 
     def step(self, a):
         if self.state == 0:
@@ -71,19 +68,18 @@ class SimpleTwoStatesEnv(SimpleActionOnlyEnv):
         else:
             reward = -np.sin(a * 3.1416).sum()
 
-        return np.zeros((1,)), reward, True, False, {}
+        return np.array([self.state], dtype=np.float32), reward, True, False, {}
 
 
 class SimpleSequenceEnv(SimpleTwoStatesEnv):
     """ 2 states, 10-timestep episodes, the action sometimes causes the agent to change state. Allows to check that V(s_t+1) is computed correctly by the agent
     """
 
-    def reset(self, seed):
-        random.seed(seed)
+    def reset(self, **kwargs):
         self.state = random.randrange(2)
         self.timestep = 0
 
-        return (self.current_state(), {})
+        return self.current_state(), {}
 
     def step(self, a):
         reward = super().step(a)[1]
@@ -122,13 +118,12 @@ class SimpleGoalEnv(gym.Env):
         )
         self.state = np.zeros((2,), dtype=np.float32)
 
-    def reset(self, seed):
-        random.seed(seed)
+    def reset(self, **kwargs):
         self.state[0] = random.random()
         self.state[1] = random.random()
         self._timestep = 0
 
-        return (self.state, {})
+        return self.state, {}
 
     def step(self, a):
         def distance_to_goal(s):
