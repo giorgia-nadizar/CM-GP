@@ -57,12 +57,19 @@ class Program:
         return repr(self.run_program(inp=[1], do_print=True))
 
     def __call__(self, inp):
-        res = self.run_program(inp, do_print=False)
+        return self.run_program(inp, do_print=False)
 
-        if len(res) == 0:
-            return 0.0
-        else:
-            return res[-1]
+    def __str__(self):
+        expression = self.run_program([1.0], do_print=True)
+
+        # Simple constant propagation: if the resulting expression can be eval'd,
+        # it means that it only uses operators and constants, so we can simply
+        # show the program as the constant
+        try:
+            functions = {operator.name: operator.function for operator in OPERATORS}
+            return str(eval(expression, functions))
+        except:
+            return expression
 
     def run_program(self, inp, do_print=False):
         stack = []
@@ -98,6 +105,8 @@ class Program:
                 else:
                     if input_index < len(inp):
                         stack.append(inp[input_index])
+                    else:
+                        stack.append(1.0)
 
                 continue
 
@@ -126,6 +135,9 @@ class Program:
                 # Put a string representation of the operator on the stack
                 if len(operands) == 1:
                     result = f"{operator.name}({operands[0]})"
+                elif operator.name in ['min', 'max']:
+                    # two-operand operator that is a function call
+                    result = f"{operator.name}({operands[0]}, {operands[1]})"
                 elif len(operands) == 2:
                     result = f"({operands[0]} {operator.name} {operands[1]})"
                 elif len(operands) == 3:
@@ -137,12 +149,12 @@ class Program:
                 result = operator.function(*operands)
                 stack.append(result)
 
-        if do_print:
-            return ' '.join(stack)
+        if len(stack) == 0:
+            return 0.0
         else:
-            return stack
+            return stack[-1]
 
 
 if __name__ == '__main__':
-    print(Program([5.0, 1.0, -2.0, -5.0, 18.0, 0.0, -8.0, -2.0]).run_program([3.14, 6.28], do_print=True))
+    print(Program([5.0, 1.0, -2.0, -5.0, 18.0, 0.0, -8.0, -2.0]))
     print(Program([-17.0, 0.0]).run_program([0.0], do_print=False))

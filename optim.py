@@ -23,6 +23,10 @@ class ProgramOptimizer:
         program = Program(genome=self.best_solution)
         return program(state)
 
+    def get_best_solution_str(self):
+        program = Program(genome=self.best_solution)
+        return str(program)
+
     def _fitness_func(self, ga_instance, solution, solution_idx):
         batch_size = self.states.shape[0]
         sum_error = 0.0

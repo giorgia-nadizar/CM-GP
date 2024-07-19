@@ -259,11 +259,12 @@ def run_synthesis(args: Args):
                 states = data.observations.detach().numpy()
                 actions = improved_actions.detach().numpy()
 
+                print('Best program:')
+
                 for action_index in range(env.action_space.shape[0]):
                     program_optimizers[action_index].fit(states, actions[:, action_index])
 
-                # Print program
-                program_optimizers.print_best_solution()
+                    print(f"a[{action_index}] = {program_optimizers[action_index].get_best_solution_str()}")
 
             # update the target network
             for param, target_param in zip(qf1.parameters(), qf1_target.parameters()):
