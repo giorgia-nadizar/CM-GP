@@ -77,9 +77,8 @@ class Program:
 
             value = np.random.normal(loc=mean, scale=math.exp(log_std))
 
-            # Execute the token
+            # Literal, push it
             if value >= 0.0:
-                # Literal, push it
                 if do_print:
                     stack.append(str(value))
                 else:
@@ -95,7 +94,7 @@ class Program:
 
                 # Silently ignore input variables beyond the end of inp
                 if do_print:
-                    stack.append(f'x{input_index}')
+                    stack.append(f'x[{input_index}]')
                 else:
                     if input_index < len(inp):
                         stack.append(inp[input_index])
@@ -106,26 +105,34 @@ class Program:
             operator_index = -value - 1
             operator = OPERATORS[operator_index]
 
+            if operator.function is None:
+                # End of program
+                break
+
+            # Pop the operands
+            operands = []
+
+            for index in range(operator.num_operands):
+                if len(stack) == 0:
+                    # If the stack is empty, "pop" a 1 from it.
+                    # 1 is neutral to mul, can be used for div, does something to add and sub
+                    operand = 1.0
+                else:
+                    operand = stack.pop()
+
+                operands.append(operand)
+
             if do_print:
-                stack.append(operator.name)
+                # Put a string representation of the operator on the stack
+                if len(operands) == 1:
+                    result = f"{operator.name}({operands[0]})"
+                elif len(operands) == 2:
+                    result = f"({operands[0]} {operator.name} {operands[1]})"
+                elif len(operands) == 3:
+                    result = f"({operands[0]} ? {operands[1]} : {operands[2]})"
+
+                stack.append(result)
             else:
-                if operator.function is None:
-                    # End of program
-                    break
-
-                # Pop the operands
-                operands = []
-
-                for index in range(operator.num_operands):
-                    if len(stack) == 0:
-                        # If the stack is empty, "pop" a 1 from it.
-                        # 1 is neutral to mul, can be used for div, does something to add and sub
-                        operand = 1.0
-                    else:
-                        operand = stack.pop()
-
-                    operands.append(operand)
-
                 # Run the operator and get the result back
                 result = operator.function(*operands)
                 stack.append(result)
@@ -137,5 +144,5 @@ class Program:
 
 
 if __name__ == '__main__':
-    print(Program([5.0, 1.0, -21.0, -2.0]).run_program([3.14, 6.28], do_print=True))
+    print(Program([5.0, 1.0, -2.0, -5.0, 18.0, 0.0, -8.0, -2.0]).run_program([3.14, 6.28], do_print=True))
     print(Program([-17.0, 0.0]).run_program([0.0], do_print=False))
