@@ -8,16 +8,18 @@ from dataclasses import dataclass
 from postfix_program import Program, NUM_OPERATORS
 
 class ProgramOptimizer:
-    def __init__(self, config):
+    def __init__(self, config, state_dim):
 
         # Create the initial population
-        self.initial_program = [0.0] * (config.num_genes * 2)  # Mean and log_std for each gene
+        # We create it so these random programs try all the operators and read all the state variables
+        self.initial_population = np.random.random((config.num_individuals, config.num_genes * 2))  # Random numbers between 0 and 1
+        self.initial_population *= NUM_OPERATORS + state_dim                    # Between 0 and NUM_OPERATORS + state_dim
+        self.initial_population *= -1.0                                         # Between -NUM_OPERATORS -state_dim and 0
 
-        self.best_solution = self.initial_program
+        self.best_solution = self.initial_population[0]
         self.best_fitness = None
 
         self.config = config
-        self.initial_population = [np.array(self.initial_program) for i in range(config.num_individuals)]
 
     def get_action(self, state):
         program = Program(genome=self.best_solution)

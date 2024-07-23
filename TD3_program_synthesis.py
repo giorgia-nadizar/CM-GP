@@ -49,7 +49,7 @@ class Args:
     """the user or org name of the model repository from the Hugging Face Hub"""
 
     # Algorithm specific arguments
-    env_id: str = "SimpleLargeAction-v0"
+    env_id: str = "SimpleTwoStates-v0"
     """the id of the environment"""
     total_timesteps: int = int(1e4)
     """total timesteps of the experiments"""
@@ -61,7 +61,7 @@ class Args:
     """the discount factor gamma"""
     tau: float = 0.005
     """target smoothing coefficient (default: 0.005)"""
-    batch_size: int = 32
+    batch_size: int = 16
     """the batch size of sample from the reply memory"""
     policy_noise: float = 0.2
     """the scale of policy noise"""
@@ -86,17 +86,14 @@ class Args:
 
 
 def make_env(env_id, seed, idx, capture_video, run_name):
-    def thunk():
-        if capture_video and idx == 0:
-            env = gym.make(env_id, render_mode="rgb_array")
-            env = gym.wrappers.RecordVideo(env, f"videos/{run_name}")
-        else:
-            env = gym.make(env_id)
-        env = gym.wrappers.RecordEpisodeStatistics(env)
-        env.action_space.seed(seed)
-        return env
-
-    return thunk
+    if capture_video and idx == 0:
+        env = gym.make(env_id, render_mode="rgb_array")
+        env = gym.wrappers.RecordVideo(env, f"videos/{run_name}")
+    else:
+        env = gym.make(env_id)
+    env = gym.wrappers.RecordEpisodeStatistics(env)
+    env.action_space.seed(seed)
+    return env
 
 
 # ALGO LOGIC: initialize agent here:
@@ -159,11 +156,11 @@ def run_synthesis(args: Args):
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
 
     # env setup
-    env = make_env(args.env_id, args.seed, 0, args.capture_video, run_name)()
+    env = make_env(args.env_id, args.seed, 0, args.capture_video, run_name)
     assert isinstance(env.action_space, gym.spaces.Box), "only continuous action space is supported"
 
     # Actor is a learnable program
-    program_optimizers = [ProgramOptimizer(args) for i in range(env.action_space.shape[0])]
+    program_optimizers = [ProgramOptimizer(args, env.observation_space.shape[0]) for i in range(env.action_space.shape[0])]
 
     qf1 = QNetwork(env).to(device)
     qf2 = QNetwork(env).to(device)
@@ -208,6 +205,10 @@ def run_synthesis(args: Args):
         real_next_obs = next_obs.copy()
         rb.add(obs, real_next_obs, action, reward, termination, info)
 
+        # RESET
+        if termination or truncation:
+            next_obs, _ = env.reset()
+
         # TRY NOT TO MODIFY: CRUCIAL step easy to overlook
         obs = next_obs
 
@@ -251,7 +252,7 @@ def run_synthesis(args: Args):
                 program_objective = qf1(data.observations, program_actions).mean()
                 program_objective.backward()
 
-                improved_actions = program_actions + 0.1 * program_actions.grad
+                improved_actions = program_actions + program_actions.grad
 
                 RES.append(improved_actions[0].detach().numpy())
 

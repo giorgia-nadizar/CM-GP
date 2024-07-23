@@ -60,19 +60,11 @@ class Program:
         return self.run_program(inp, do_print=False)
 
     def __str__(self):
-        expression = self.run_program([1.0], do_print=True)
-
-        # Simple constant propagation: if the resulting expression can be eval'd,
-        # it means that it only uses operators and constants, so we can simply
-        # show the program as the constant
-        try:
-            functions = {operator.name: operator.function for operator in OPERATORS}
-            return str(eval(expression, functions))
-        except:
-            return expression
+        return self.run_program([1.0], do_print=True)
 
     def run_program(self, inp, do_print=False):
         stack = []
+        functions = {operator.name: operator.function for operator in OPERATORS}
 
         for pointer in range(0, len(self.genome), 2):
             # Sample the actual token to execute
@@ -143,6 +135,14 @@ class Program:
                 elif len(operands) == 3:
                     result = f"({operands[0]} ? {operands[1]} : {operands[2]})"
 
+                # Simple constant propagation: if the resulting expression can be eval'd,
+                # it means that it only uses operators and constants, so we can simply
+                # show the program as the constant
+                try:
+                    result = str(eval(result, functions))
+                except:
+                    pass
+
                 stack.append(result)
             else:
                 # Run the operator and get the result back
@@ -153,7 +153,6 @@ class Program:
             return 0.0
         else:
             return stack[-1]
-
 
 if __name__ == '__main__':
     print(Program([5.0, 1.0, -2.0, -5.0, 18.0, 0.0, -8.0, -2.0]))
