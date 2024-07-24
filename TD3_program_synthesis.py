@@ -249,7 +249,9 @@ def run_synthesis(args: Args):
                 program_actions = get_state_actions(program_optimizers, data.observations.detach().numpy(), env, args)
                 program_actions = torch.tensor(program_actions, requires_grad=True)
 
-                program_objective = qf1(data.observations, program_actions).mean()
+                program_objective_1 = qf1(data.observations, program_actions).mean()
+                program_objective_2 = qf2(data.observations, program_actions).mean()
+                program_objective = (program_objective_1 + program_objective_2) * 0.5
                 program_objective.backward()
 
                 improved_actions = program_actions + program_actions.grad
@@ -264,7 +266,6 @@ def run_synthesis(args: Args):
 
                 for action_index in range(env.action_space.shape[0]):
                     program_optimizers[action_index].fit(states, actions[:, action_index])
-
                     print(f"a[{action_index}] = {program_optimizers[action_index].get_best_solution_str()}")
 
             # update the target network
