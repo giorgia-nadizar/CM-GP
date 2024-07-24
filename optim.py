@@ -32,18 +32,27 @@ class ProgramOptimizer:
     def _fitness_func(self, ga_instance, solution, solution_idx):
         batch_size = self.states.shape[0]
         sum_error = 0.0
-
-        program = Program(genome=solution)
+        sum_lookedat = 0.0
 
         # Evaluate the program several times, because evaluations are stochastic
         for eval_run in range(self.config.num_eval_runs):
             for index in range(batch_size):
+                # Create the Program here to sample the tokens for every eval run and every index
+                program = Program(genome=solution)
+
+                # MSE for the loss
                 action = program(self.states[index])
                 desired_action = self.actions[index]
 
                 sum_error += np.mean((action - desired_action) ** 2)
 
-        fitness = -(sum_error / (batch_size + self.config.num_eval_runs))
+                # Num input variables looked at
+                sum_lookedat += program.num_inputs_looked_at(self.states[index])
+
+        avg_error = (sum_error / (batch_size * self.config.num_eval_runs))
+        avg_lookedat = (sum_lookedat / (batch_size * self.config.num_eval_runs))
+
+        fitness = -avg_error / (avg_lookedat + 0.01) # FIXME: random equation
 
         return fitness
 

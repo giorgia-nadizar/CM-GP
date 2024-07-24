@@ -76,7 +76,7 @@ class Args:
 
     # Parameters for the program optimizer
     num_individuals: int = 50
-    num_genes: int = 4
+    num_genes: int = 10
     num_eval_runs: int = 10
 
     num_generations: int = 20

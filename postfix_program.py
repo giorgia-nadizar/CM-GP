@@ -6,11 +6,12 @@
 # <end>            # OPERATOR_END
 #
 # 1. PyGAD produces numpy arrays (lists of floats). Look at them in pairs of (mean, variance).
-#    sample a value from that normal distribution, and transform the sample to one
+#    sample a token from that normal distribution, and transform the sample to one
 #    of the tokens listed above
 # 2. Run that
 #
 # Format: genes are floats. We
+import re
 import math
 import numpy as np
 
@@ -47,11 +48,22 @@ OPERATORS = [
     Operator('<end>', 0, None),
 ]
 NUM_OPERATORS = len(OPERATORS)
-
+FIND_X_REGEX = re.compile('\[(\d+)\]')
 
 class Program:
     def __init__(self, genome):
-        self.genome = genome
+        self.tokens = []
+
+        for pointer in range(0, len(genome), 2):
+            # Sample the actual token to execute
+            mean = genome[pointer + 0]
+            log_std = genome[pointer + 1]
+
+            if log_std > 10.0:
+                log_std = 10.0      # Prevent exp() from overflowing
+
+            token = np.random.normal(loc=mean, scale=math.exp(log_std))
+            self.tokens.append(token)
 
     def __str__(self):
         return repr(self.run_program(inp=[1], do_print=True))
@@ -59,51 +71,46 @@ class Program:
     def __call__(self, inp):
         return self.run_program(inp, do_print=False)
 
-    def __str__(self):
-        return self.run_program([1.0], do_print=True)
+    def num_inputs_looked_at(self, inp):
+        lookedat = set(FIND_X_REGEX.findall(str(self)))     # Find x'es in the representation of this program. Those are state variables actually looked at
+        return len(lookedat)
 
     def run_program(self, inp, do_print=False):
         stack = []
         functions = {operator.name: operator.function for operator in OPERATORS}
 
-        for pointer in range(0, len(self.genome), 2):
-            # Sample the actual token to execute
-            mean = self.genome[pointer + 0]
-            log_std = self.genome[pointer + 1]
-
-            if log_std > 10.0:
-                log_std = 10.0      # Prevent exp() from overflowing
-
-            value = np.random.normal(loc=mean, scale=math.exp(log_std))
-
+        for token in self.tokens:
             # Literal, push it
-            if value >= 0.0:
+            if token >= 0.0:
                 if do_print:
-                    stack.append(str(value))
+                    stack.append(str(token))
                 else:
-                    stack.append(value)
+                    stack.append(token)
 
                 continue
 
-            value = int(value)
+            token = int(token)
 
-            if value < -NUM_OPERATORS:
+            if token < -NUM_OPERATORS:
                 # Input variable
-                input_index = -value - NUM_OPERATORS - 1
+                input_index = -token - NUM_OPERATORS - 1
 
                 # Silently ignore input variables beyond the end of inp
-                if do_print:
-                    stack.append(f'x[{input_index}]')
-                else:
-                    if input_index < len(inp):
+                if input_index < len(inp):
+                    if do_print:
+                        stack.append(f'x[{input_index}]')
+                    else:
                         stack.append(inp[input_index])
+                else:
+                    if do_print:
+                        stack.append('1.0')
                     else:
                         stack.append(1.0)
 
                 continue
 
             # Operators
-            operator_index = -value - 1
+            operator_index = -token - 1
             operator = OPERATORS[operator_index]
 
             if operator.function is None:
