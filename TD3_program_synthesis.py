@@ -75,14 +75,14 @@ class Args:
     """noise clip parameter of the Target Policy Smoothing Regularization"""
 
     # Parameters for the program optimizer
-    num_individuals: int = 50
+    num_individuals: int = 100
     num_genes: int = 10
     num_eval_runs: int = 10
 
-    num_generations: int = 20
-    num_parents_mating: int = 20
-    keep_parents: int = 5
-    mutation_percent_genes: int = 10
+    num_generations: int = 50
+    num_parents_mating: int = 50
+    keep_parents: int = 10
+    mutation_percent_genes: int = 20
 
 
 def make_env(env_id, seed, idx, capture_video, run_name):
@@ -191,15 +191,15 @@ def run_synthesis(args: Args):
         else:
             with torch.no_grad():
                 action = get_state_actions(program_optimizers, obs[None, :], env, args)[0]
-                print('ACTION', action)
 
         # TRY NOT TO MODIFY: execute the game and log data.
         next_obs, reward, termination, truncation, info = env.step(action)
 
         # TRY NOT TO MODIFY: record rewards for plotting purposes
-        print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
-        writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
-        writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
+        if 'episode' in info:
+            print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
+            writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
+            writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
 
         # TRY NOT TO MODIFY: save data to reply buffer; handle `final_observation`
         real_next_obs = next_obs.copy()

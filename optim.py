@@ -20,6 +20,7 @@ class ProgramOptimizer:
         self.best_fitness = None
 
         self.config = config
+        self.state_dim = state_dim
 
     def get_action(self, state):
         program = Program(genome=self.best_solution)
@@ -27,7 +28,7 @@ class ProgramOptimizer:
 
     def get_best_solution_str(self):
         program = Program(genome=self.best_solution)
-        return str(program)
+        return program.to_string([0.0] * self.state_dim)
 
     def _fitness_func(self, ga_instance, solution, solution_idx):
         batch_size = self.states.shape[0]

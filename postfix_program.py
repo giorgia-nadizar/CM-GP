@@ -65,14 +65,14 @@ class Program:
             token = np.random.normal(loc=mean, scale=math.exp(log_std))
             self.tokens.append(token)
 
-    def __str__(self):
-        return repr(self.run_program(inp=[1], do_print=True))
+    def to_string(self, inp):
+        return repr(self.run_program(inp=inp, do_print=True))
 
     def __call__(self, inp):
         return self.run_program(inp, do_print=False)
 
     def num_inputs_looked_at(self, inp):
-        lookedat = set(FIND_X_REGEX.findall(str(self)))     # Find x'es in the representation of this program. Those are state variables actually looked at
+        lookedat = set(FIND_X_REGEX.findall(self.to_string(inp)))     # Find x'es in the representation of this program. Those are state variables actually looked at
         return len(lookedat)
 
     def run_program(self, inp, do_print=False):
@@ -162,5 +162,6 @@ class Program:
             return stack[-1]
 
 if __name__ == '__main__':
-    print(Program([5.0, 1.0, -2.0, -5.0, 18.0, 0.0, -8.0, -2.0]))
+    print(Program([5.0, 1.0, -2.0, -5.0, 18.0, 0.0, -8.0, -2.0]).to_string([]))
+    print(Program([-NUM_OPERATORS-1, -1.0, -NUM_OPERATORS - 2, -1.0, -7, -1.0]).to_string([0.0, 0.0, 0.0]))
     print(Program([-17.0, 0.0]).run_program([0.0], do_print=False))
