@@ -13,8 +13,8 @@ class ProgramOptimizer:
         # Create the initial population
         # We create it so these random programs try all the operators and read all the state variables
         self.initial_population = np.random.random((config.num_individuals, config.num_genes * 2))  # Random numbers between 0 and 1
-        self.initial_population *= NUM_OPERATORS + state_dim                    # Between 0 and NUM_OPERATORS + state_dim
-        self.initial_population *= -1.0                                         # Between -NUM_OPERATORS -state_dim and 0
+        self.initial_population[0:-1:2] *= -(NUM_OPERATORS + state_dim)         # Tokens between -NUM_OPERATORS - state_dim and 0
+        self.initial_population[1:-1:2] *= 3.0                                  # Log_std between 0 and 3
 
         self.best_solution = self.initial_population[0]
         self.best_fitness = None

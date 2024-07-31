@@ -49,9 +49,9 @@ class Args:
     """the user or org name of the model repository from the Hugging Face Hub"""
 
     # Algorithm specific arguments
-    env_id: str = "SimpleTwoStates-v0"
+    env_id: str = "SimpleGoal-v0"
     """the id of the environment"""
-    total_timesteps: int = int(1e4)
+    total_timesteps: int = 1000000000
     """total timesteps of the experiments"""
     learning_rate: float = 3e-4
     """the learning rate of the optimizer"""
@@ -61,13 +61,11 @@ class Args:
     """the discount factor gamma"""
     tau: float = 0.005
     """target smoothing coefficient (default: 0.005)"""
-    batch_size: int = 16
+    batch_size: int = 256
     """the batch size of sample from the reply memory"""
     policy_noise: float = 0.2
     """the scale of policy noise"""
-    exploration_noise: float = 0.1
-    """the scale of exploration noise"""
-    learning_starts: int = 256
+    learning_starts: int = 2000
     """timestep to start learning"""
     policy_frequency: int = 100
     """the frequency of training policy (delayed)"""
@@ -76,12 +74,12 @@ class Args:
 
     # Parameters for the program optimizer
     num_individuals: int = 100
-    num_genes: int = 10
+    num_genes: int = 5
     num_eval_runs: int = 10
 
     num_generations: int = 50
     num_parents_mating: int = 50
-    keep_parents: int = 10
+    keep_parents: int = 50
     mutation_percent_genes: int = 20
 
 
@@ -100,14 +98,12 @@ def make_env(env_id, seed, idx, capture_video, run_name):
 class QNetwork(nn.Module):
     def __init__(self, env):
         super().__init__()
-        self.fc1 = nn.Linear(np.array(env.observation_space.shape).prod() + np.prod(env.action_space.shape), 256)
-        self.fc2 = nn.Linear(256, 256)
-        self.fc3 = nn.Linear(256, 1)
+        self.fc1 = nn.Linear(np.array(env.observation_space.shape).prod() + np.prod(env.action_space.shape), 128)
+        self.fc3 = nn.Linear(128, 1)
 
     def forward(self, x, a):
         x = torch.cat([x, a], 1)
         x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
         x = self.fc3(x)
         return x
 
@@ -263,6 +259,7 @@ def run_synthesis(args: Args):
                 actions = improved_actions.detach().numpy()
 
                 print('Best program:')
+                writer.add_scalar("losses/program_objective", program_objective.item(), global_step)
 
                 for action_index in range(env.action_space.shape[0]):
                     program_optimizers[action_index].fit(states, actions[:, action_index])
@@ -280,7 +277,6 @@ def run_synthesis(args: Args):
                 writer.add_scalar("losses/qf1_loss", qf1_loss.item(), global_step)
                 writer.add_scalar("losses/qf2_loss", qf2_loss.item(), global_step)
                 writer.add_scalar("losses/qf_loss", qf_loss.item() / 2.0, global_step)
-                writer.add_scalar("losses/program_objective", program_objective.item(), global_step)
                 writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
 
     env.close()
