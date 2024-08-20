@@ -61,7 +61,7 @@ class Args:
     """the discount factor gamma"""
     tau: float = 0.005
     """target smoothing coefficient (default: 0.005)"""
-    batch_size: int = 256
+    batch_size: int = 512
     """the batch size of sample from the reply memory"""
     policy_noise: float = 0.2
     """the scale of policy noise"""
@@ -75,13 +75,12 @@ class Args:
     # Parameters for the program optimizer
     num_individuals: int = 100
     num_genes: int = 5
-    num_eval_runs: int = 10
+    num_eval_runs: int = 20
 
     num_generations: int = 50
     num_parents_mating: int = 50
     keep_parents: int = 50
-    mutation_percent_genes: int = 20
-
+    mutation_probability: float = 0.1
 
 def make_env(env_id, seed, idx, capture_video, run_name):
     if capture_video and idx == 0:

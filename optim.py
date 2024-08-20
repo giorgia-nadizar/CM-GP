@@ -12,9 +12,8 @@ class ProgramOptimizer:
 
         # Create the initial population
         # We create it so these random programs try all the operators and read all the state variables
-        self.initial_population = np.random.random((config.num_individuals, config.num_genes * 2))  # Random numbers between 0 and 1
-        self.initial_population[0:-1:2] *= -(NUM_OPERATORS + state_dim)         # Tokens between -NUM_OPERATORS - state_dim and 0
-        self.initial_population[1:-1:2] *= 3.0                                  # Log_std between 0 and 3
+        self.initial_population = np.random.random((config.num_individuals, config.num_genes))  # Random numbers between 0 and 1
+        self.initial_population *= -(NUM_OPERATORS + state_dim)         # Tokens between -NUM_OPERATORS - state_dim and 0
 
         self.best_solution = self.initial_population[0]
         self.best_fitness = None
@@ -33,27 +32,29 @@ class ProgramOptimizer:
     def _fitness_func(self, ga_instance, solution, solution_idx):
         batch_size = self.states.shape[0]
         sum_error = 0.0
-        sum_lookedat = 0.0
+        program = Program(genome=solution)
+
+        # Num input variables looked at
+        expected_lookedat = self.states.shape[1]
+        lookedat = 0.0
+
+        for i in range(100):
+            # This is a stochastic process
+            lookedat += program.num_inputs_looked_at(expected_lookedat)
+
+        looked_proportion = (lookedat / 100) / expected_lookedat
 
         # Evaluate the program several times, because evaluations are stochastic
         for eval_run in range(self.config.num_eval_runs):
             for index in range(batch_size):
-                # Create the Program here to sample the tokens for every eval run and every index
-                program = Program(genome=solution)
-
                 # MSE for the loss
                 action = program(self.states[index])
                 desired_action = self.actions[index]
 
                 sum_error += np.mean((action - desired_action) ** 2)
 
-                # Num input variables looked at
-                sum_lookedat += program.num_inputs_looked_at(self.states[index])
-
         avg_error = (sum_error / (batch_size * self.config.num_eval_runs))
-        avg_lookedat = (sum_lookedat / (batch_size * self.config.num_eval_runs))
-
-        fitness = -avg_error / (avg_lookedat + 0.01) # FIXME: random equation
+        fitness = -avg_error / (looked_proportion + 0.01) # FIXME: random equation
 
         return fitness
 
@@ -72,7 +73,7 @@ class ProgramOptimizer:
             num_generations=self.config.num_generations,
             num_parents_mating=self.config.num_parents_mating,
             keep_parents=self.config.keep_parents,
-            mutation_percent_genes=self.config.mutation_percent_genes,
+            mutation_probability=self.config.mutation_probability,
 
             # Work with non-deterministic objective functions
             keep_elitism=0,

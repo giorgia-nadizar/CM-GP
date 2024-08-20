@@ -24,51 +24,34 @@ class Operator:
     def __str__(self):
         return self.name
 
-def from_bool(x):
-    return 1.0 if x else -1.0
-
-OPERATORS = [
-    Operator('abs', 1, lambda a: abs(a)),
-    Operator('-abs', 1, lambda a: -abs(a)),
-    Operator('sin', 1, lambda a: math.sin(a)),
-    Operator('-sin', 1, lambda a: -math.sin(a)),
-    Operator('cos', 1, lambda a: math.cos(a)),
-    Operator('-cos', 1, lambda a: -math.cos(a)),
+OPERATORS = [   # Random order
     Operator('exp', 1, lambda a: math.exp(min(a, 10.0))),
-    Operator('-exp', 1, lambda a: -math.exp(min(a, 10.0))),
-    Operator('sqrt', 1, lambda a: math.sqrt(a) if a >= 0.0 else np.random.normal()),
-    Operator('-sqrt', 1, lambda a: -math.sqrt(a) if a >= 0.0 else np.random.normal()),
-    Operator('neg', 1, lambda a: -a),
-    Operator('+', 2, lambda a, b: a + b),
-    Operator('-', 2, lambda a, b: a - b),
+    Operator('cos', 1, lambda a: math.cos(a)),
     Operator('*', 2, lambda a, b: a * b),
-    Operator('/', 2, lambda a, b: a / b if abs(b) > 0.01 else np.random.normal()),
     Operator('%', 2, lambda a, b: a % b if abs(b) > 0.01 else np.random.normal()),
-    Operator('max', 2, lambda a, b: max(a, b)),
-    Operator('min', 2, lambda a, b: min(a, b)),
+    Operator('+', 2, lambda a, b: a + b),
+    Operator('abs', 1, lambda a: abs(a)),
     Operator('trunc', 1, lambda a: float(int(a))),
-    Operator('<', 2, lambda a, b: from_bool(a < b)),
-    Operator('>', 2, lambda a, b: from_bool(a > b)),
-    Operator('?', 3, lambda cond, a, b: a if cond > 0.0 else b),
-    Operator('<end>', 0, None),
+    Operator('-', 2, lambda a, b: a - b),
+    Operator('max', 2, lambda a, b: max(a, b)),
+    Operator('sqrt', 1, lambda a: math.sqrt(a) if a >= 0.0 else np.random.normal()),
+    Operator('-abs', 1, lambda a: -abs(a)),
+    Operator('-exp', 1, lambda a: -math.exp(min(a, 10.0))),
+    Operator('-sqrt', 1, lambda a: -math.sqrt(a) if a >= 0.0 else np.random.normal()),
+    Operator('ifsmaller', 4, lambda a, b, iftrue, iffalse: iftrue if a < b else iffalse),
+    Operator('sin', 1, lambda a: math.sin(a)),
+    Operator('/', 2, lambda a, b: a / b if abs(b) > 0.01 else np.random.normal()),
+    Operator('-cos', 1, lambda a: -math.cos(a)),
+    Operator('neg', 1, lambda a: -a),
+    Operator('-sin', 1, lambda a: -math.sin(a)),
+    Operator('min', 2, lambda a, b: min(a, b)),
 ]
 NUM_OPERATORS = len(OPERATORS)
 FIND_X_REGEX = re.compile('\[(\d+)\]')
 
 class Program:
     def __init__(self, genome):
-        self.tokens = []
-
-        for pointer in range(0, len(genome), 2):
-            # Sample the actual token to execute
-            mean = genome[pointer + 0]
-            log_std = genome[pointer + 1]
-
-            if log_std > 10.0:
-                log_std = 10.0      # Prevent exp() from overflowing
-
-            token = np.random.normal(loc=mean, scale=math.exp(log_std))
-            self.tokens.append(token)
+        self.tokens = genome
 
     def to_string(self, inp):
         return repr(self.run_program(inp=inp, do_print=True))
@@ -76,9 +59,49 @@ class Program:
     def __call__(self, inp):
         return self.run_program(inp, do_print=False)
 
-    def num_inputs_looked_at(self, inp):
-        lookedat = set(FIND_X_REGEX.findall(self.to_string(inp)))     # Find x'es in the representation of this program. Those are state variables actually looked at
-        return len(lookedat)
+    def num_inputs_looked_at(self, state_vars):
+        stack = []
+
+        # Keep track of state variables looked at, but not actual results
+        for token in self.tokens:
+            # Literal
+            if token >= 0.0:
+                stack.append(set([]))
+                continue
+
+            # Now, cast token to an int, but with stochasticity so that a value
+            # close to x.5 is always cast to x, but other values may end up on x+1 or x-1
+            token = int(token + 0.498 * (np.random.random() - 0.5))
+
+            # Input variable
+            if token < -NUM_OPERATORS:
+                input_index = -token - NUM_OPERATORS - 1
+
+                # Silently ignore input variables beyond the end of inp
+                if input_index < state_vars:
+                    stack.append(set([input_index]))
+                else:
+                    stack.append(set([]))
+
+                continue
+
+            # Operators
+            operator_index = -token - 1
+            operator = OPERATORS[operator_index]
+
+            # Pop the operands
+            operands = set([])
+
+            for index in range(operator.num_operands):
+                if len(stack) > 0:
+                    operands.update(stack.pop())
+
+            stack.append(operands)
+
+        if len(stack) == 0:
+            return 0
+        else:
+            return len(stack[-1])
 
     def run_program(self, inp, do_print=False):
         stack = []
@@ -88,16 +111,22 @@ class Program:
             # Literal, push it with a random sign. The program has to use the make_pos() and make_neg() operators to fix the sign
             if token >= 0.0:
                 if do_print:
-                    stack.append(str(token))
+                    stack.append('+-' + str(token))
                 else:
+                    # Randomize the sign of the token
+                    if np.random.random() < 0.5:
+                        token = -token
+
                     stack.append(token)
 
                 continue
 
-            token = int(token)
+            # Now, cast token to an int, but with stochasticity so that a value
+            # close to x.5 is always cast to x, but other values may end up on x+1 or x-1
+            token = int(token + 0.498 * (np.random.random() - 0.5))
 
+            # Input variable
             if token < -NUM_OPERATORS:
-                # Input variable
                 input_index = -token - NUM_OPERATORS - 1
 
                 # Silently ignore input variables beyond the end of inp
@@ -117,10 +146,6 @@ class Program:
             # Operators
             operator_index = -token - 1
             operator = OPERATORS[operator_index]
-
-            if operator.function is None:
-                # End of program
-                break
 
             # Pop the operands
             operands = []
@@ -142,8 +167,8 @@ class Program:
                     result = f"{operator.name}({operands[0]}, {operands[1]})"
                 elif len(operands) == 2:
                     result = f"({operands[0]} {operator.name} {operands[1]})"
-                elif len(operands) == 3:
-                    result = f"({operands[0]} ? {operands[1]} : {operands[2]})"
+                elif len(operands) == 4:
+                    result = f"({operands[0]} < {operands[1]} ? {operands[2]} : {operands[3]})"
 
                 # Simple constant propagation: if the resulting expression can be eval'd,
                 # it means that it only uses operators and constants, so we can simply
@@ -173,10 +198,9 @@ if __name__ == '__main__':
 
     for l in range(20):
         for i in range(100000):
-            dna = np.random.random((l*2,))
+            dna = np.random.random((l,))
             dna[0:-1:2] *= -(NUM_OPERATORS + 1)                 # Tokens between -NUM_OPERATORS - state_dim and 0
-            dna[1:-1:2] *= 3.0                                  # Log_std between 0 and 3
             p = Program(dna)
             values.append(p([]))
 
-        print('Average output of random programs of size', l, ':', np.mean(values), '+=', np.std(values))
+        print('Average output of random programs of size', l, ':', np.mean(values), '+-', np.std(values))
