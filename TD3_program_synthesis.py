@@ -61,13 +61,13 @@ class Args:
     """the discount factor gamma"""
     tau: float = 0.005
     """target smoothing coefficient (default: 0.005)"""
-    batch_size: int = 512
+    batch_size: int = 128
     """the batch size of sample from the reply memory"""
     policy_noise: float = 0.2
     """the scale of policy noise"""
     learning_starts: int = 2000
     """timestep to start learning"""
-    policy_frequency: int = 100
+    policy_frequency: int = 500
     """the frequency of training policy (delayed)"""
     noise_clip: float = 0.5
     """noise clip parameter of the Target Policy Smoothing Regularization"""
@@ -77,7 +77,7 @@ class Args:
     num_genes: int = 5
     num_eval_runs: int = 5
 
-    num_generations: int = 200
+    num_generations: int = 100
     num_parents_mating: int = 10
     keep_parents: int = 10
     mutation_probability: float = 0.1
@@ -113,11 +113,10 @@ def get_state_actions(program_optimizers, obs, env, args):
     for i, o in enumerate(obs):
         action = np.zeros(env.action_space.shape, dtype=np.float32)
 
-        for eval_run in range(args.num_eval_runs):
-            for action_index in range(env.action_space.shape[0]):
-                action[action_index] += program_optimizers[action_index].get_action(o)
+        for action_index in range(env.action_space.shape[0]):
+            action[action_index] += program_optimizers[action_index].get_action(o)
 
-        program_actions.append(action / args.num_eval_runs)
+        program_actions.append(action)
 
     return np.array(program_actions)
 
@@ -156,6 +155,9 @@ def run_synthesis(args: Args):
 
     # Actor is a learnable program
     program_optimizers = [ProgramOptimizer(args, env.observation_space.shape[0]) for i in range(env.action_space.shape[0])]
+
+    for action_index in range(env.action_space.shape[0]):
+        print(f"a[{action_index}] = {program_optimizers[action_index].get_best_solution_str()}")
 
     qf1 = QNetwork(env).to(device)
     qf2 = QNetwork(env).to(device)
@@ -271,7 +273,7 @@ def run_synthesis(args: Args):
             for param, target_param in zip(qf2.parameters(), qf2_target.parameters()):
                 target_param.data.copy_(args.tau * param.data + (1 - args.tau) * target_param.data)
 
-            if global_step % 100 == 0:
+            if global_step % 10 == 0:
                 writer.add_scalar("losses/qf1_values", qf1_a_values.mean().item(), global_step)
                 writer.add_scalar("losses/qf2_values", qf2_a_values.mean().item(), global_step)
                 writer.add_scalar("losses/qf1_loss", qf1_loss.item(), global_step)

@@ -30,14 +30,14 @@ OPERATORS = [
     Operator('-cos', 1, lambda a: -math.cos(a)),
     Operator('exp', 1, lambda a: math.exp(min(a, 10.0))),
     Operator('-exp', 1, lambda a: -math.exp(min(a, 10.0))),
-    Operator('sqrt', 1, lambda a: math.sqrt(a) if a >= 0.0 else np.random.normal()),
-    Operator('-sqrt', 1, lambda a: -math.sqrt(a) if a >= 0.0 else np.random.normal()),
+    Operator('sqrt', 1, lambda a: math.sqrt(a) if a >= 0.0 else 0.0),
+    Operator('-sqrt', 1, lambda a: -math.sqrt(a) if a >= 0.0 else 0.0),
     Operator('neg', 1, lambda a: -a),
     Operator('+', 2, lambda a, b: a + b),
     Operator('-', 2, lambda a, b: a - b),
     Operator('*', 2, lambda a, b: a * b),
-    Operator('/', 2, lambda a, b: a / b if abs(b) > 0.01 else np.random.normal()),
-    Operator('%', 2, lambda a, b: a % b if abs(b) > 0.01 else np.random.normal()),
+    Operator('/', 2, lambda a, b: a / b if abs(b) > 0.01 else 0.0),
+    Operator('%', 2, lambda a, b: a % b if abs(b) > 0.01 else 0.0),
     Operator('max', 2, lambda a, b: max(a, b)),
     Operator('min', 2, lambda a, b: min(a, b)),
     Operator('trunc', 1, lambda a: float(int(a))),
@@ -133,9 +133,9 @@ class Program:
                         stack.append(inp[input_index])
                 else:
                     if do_print:
-                        stack.append('randn()')
+                        stack.append('0.0')
                     else:
-                        stack.append(np.random.normal())
+                        stack.append(0.0)
 
                 continue
 
@@ -148,7 +148,7 @@ class Program:
 
             for index in range(operator.num_operands):
                 if len(stack) == 0:
-                    operand = np.random.normal()
+                    operand = 0.0
                 else:
                     operand = stack.pop()
 
@@ -182,9 +182,9 @@ class Program:
 
         if len(stack) == 0:
             if do_print:
-                stack.append('randn()')
+                stack.append('0.0')
             else:
-                stack.append(np.random.normal())
+                stack.append(0.0)
 
         return stack[-1]
 

@@ -130,6 +130,8 @@ class SimpleGoalEnv(gym.Env):
             # The goal is 0, 0, so the distance to goal is sqrt(self.state^2)
             return np.sqrt((s ** 2).sum())
 
+        a = np.clip(a, -1.0, 1.0)
+
         old_d = distance_to_goal(self.state)
         self.state = np.clip(self.state + 0.1 * a, 0.0, 1.0)
         new_d = distance_to_goal(self.state)
