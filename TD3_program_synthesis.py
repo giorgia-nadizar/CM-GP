@@ -73,13 +73,13 @@ class Args:
     """noise clip parameter of the Target Policy Smoothing Regularization"""
 
     # Parameters for the program optimizer
-    num_individuals: int = 100
+    num_individuals: int = 40
     num_genes: int = 5
-    num_eval_runs: int = 20
+    num_eval_runs: int = 5
 
-    num_generations: int = 50
-    num_parents_mating: int = 50
-    keep_parents: int = 50
+    num_generations: int = 200
+    num_parents_mating: int = 10
+    keep_parents: int = 10
     mutation_probability: float = 0.1
 
 def make_env(env_id, seed, idx, capture_video, run_name):
@@ -186,6 +186,7 @@ def run_synthesis(args: Args):
         else:
             with torch.no_grad():
                 action = get_state_actions(program_optimizers, obs[None, :], env, args)[0]
+                action = np.random.normal(loc=action, scale=args.policy_noise)
 
         # TRY NOT TO MODIFY: execute the game and log data.
         next_obs, reward, termination, truncation, info = env.step(action)

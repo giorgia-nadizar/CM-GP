@@ -9,9 +9,6 @@
 #    sample a token from that normal distribution, and transform the sample to one
 #    of the tokens listed above
 # 2. Run that
-#
-# Format: genes are floats. We
-import re
 import math
 import numpy as np
 
@@ -24,30 +21,29 @@ class Operator:
     def __str__(self):
         return self.name
 
-OPERATORS = [   # Random order
-    Operator('exp', 1, lambda a: math.exp(min(a, 10.0))),
-    Operator('cos', 1, lambda a: math.cos(a)),
-    Operator('*', 2, lambda a, b: a * b),
-    Operator('%', 2, lambda a, b: a % b if abs(b) > 0.01 else np.random.normal()),
-    Operator('+', 2, lambda a, b: a + b),
+OPERATORS = [
     Operator('abs', 1, lambda a: abs(a)),
-    Operator('trunc', 1, lambda a: float(int(a))),
-    Operator('-', 2, lambda a, b: a - b),
-    Operator('max', 2, lambda a, b: max(a, b)),
-    Operator('sqrt', 1, lambda a: math.sqrt(a) if a >= 0.0 else np.random.normal()),
     Operator('-abs', 1, lambda a: -abs(a)),
-    Operator('-exp', 1, lambda a: -math.exp(min(a, 10.0))),
-    Operator('-sqrt', 1, lambda a: -math.sqrt(a) if a >= 0.0 else np.random.normal()),
-    Operator('ifsmaller', 4, lambda a, b, iftrue, iffalse: iftrue if a < b else iffalse),
     Operator('sin', 1, lambda a: math.sin(a)),
-    Operator('/', 2, lambda a, b: a / b if abs(b) > 0.01 else np.random.normal()),
-    Operator('-cos', 1, lambda a: -math.cos(a)),
-    Operator('neg', 1, lambda a: -a),
     Operator('-sin', 1, lambda a: -math.sin(a)),
+    Operator('cos', 1, lambda a: math.cos(a)),
+    Operator('-cos', 1, lambda a: -math.cos(a)),
+    Operator('exp', 1, lambda a: math.exp(min(a, 10.0))),
+    Operator('-exp', 1, lambda a: -math.exp(min(a, 10.0))),
+    Operator('sqrt', 1, lambda a: math.sqrt(a) if a >= 0.0 else np.random.normal()),
+    Operator('-sqrt', 1, lambda a: -math.sqrt(a) if a >= 0.0 else np.random.normal()),
+    Operator('neg', 1, lambda a: -a),
+    Operator('+', 2, lambda a, b: a + b),
+    Operator('-', 2, lambda a, b: a - b),
+    Operator('*', 2, lambda a, b: a * b),
+    Operator('/', 2, lambda a, b: a / b if abs(b) > 0.01 else np.random.normal()),
+    Operator('%', 2, lambda a, b: a % b if abs(b) > 0.01 else np.random.normal()),
+    Operator('max', 2, lambda a, b: max(a, b)),
     Operator('min', 2, lambda a, b: min(a, b)),
+    Operator('trunc', 1, lambda a: float(int(a))),
+    Operator('ifsmaller', 4, lambda a, b, iftrue, iffalse: iftrue if a < b else iffalse),
 ]
 NUM_OPERATORS = len(OPERATORS)
-FIND_X_REGEX = re.compile('\[(\d+)\]')
 
 class Program:
     def __init__(self, genome):

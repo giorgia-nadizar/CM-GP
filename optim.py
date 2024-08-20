@@ -54,7 +54,7 @@ class ProgramOptimizer:
                 sum_error += np.mean((action - desired_action) ** 2)
 
         avg_error = (sum_error / (batch_size * self.config.num_eval_runs))
-        fitness = -avg_error / (looked_proportion + 0.01) # FIXME: random equation
+        fitness = (1.0 - avg_error) * looked_proportion
 
         return fitness
 
@@ -79,12 +79,12 @@ class ProgramOptimizer:
             keep_elitism=0,
             save_solutions=False,
             save_best_solutions=False,
+            random_mutation_min_val=-10,
+            random_mutation_max_val=10,
 
-            parent_selection_type="sss",
+            parent_selection_type="rank",
             crossover_type="single_point",
             mutation_type="random",
-            random_mutation_max_val=10,
-            random_mutation_min_val=-10,
             parallel_processing=["process", None]
         )
 
