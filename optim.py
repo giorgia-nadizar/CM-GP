@@ -5,7 +5,7 @@ import numpy as np
 import pyrallis
 from dataclasses import dataclass
 
-from postfix_program import Program, NUM_OPERATORS
+from postfix_program import Program, NUM_OPERATORS, InvalidProgramException
 
 class ProgramOptimizer:
     def __init__(self, config, state_dim):
@@ -22,39 +22,51 @@ class ProgramOptimizer:
         self.state_dim = state_dim
 
     def get_action(self, state):
-        program = Program(genome=self.best_solution)
-        return program(state)
+        program = Program(self.best_solution, self.state_dim)
+
+        try:
+            return program(state)
+        except InvalidProgramException:
+            return np.random.normal()
 
     def get_best_solution_str(self):
-        program = Program(genome=self.best_solution)
-        return program.to_string([0.0] * self.state_dim)
+        program = Program(self.best_solution, self.state_dim)
+
+        try:
+            return program.to_string()
+        except InvalidProgramException:
+            return '<invalid program>'
 
     def _fitness_func(self, ga_instance, solution, solution_idx):
-        batch_size = self.states.shape[0]
-        sum_error = 0.0
-        program = Program(genome=solution)
+        program = Program(solution, self.state_dim)
 
-        # Num input variables looked at
-        expected_lookedat = self.states.shape[1]
-        lookedat = 0.0
+        try:
+            # Num input variables looked at
+            expected_lookedat = self.states.shape[1]
+            lookedat = 0.0
 
-        for i in range(100):
-            # This is a stochastic process
-            lookedat += program.num_inputs_looked_at(expected_lookedat)
+            for i in range(100):
+                # This is a stochastic process
+                lookedat += program.num_inputs_looked_at(expected_lookedat)
 
-        looked_proportion = (lookedat / 100) / expected_lookedat
+            looked_proportion = (lookedat / 100) / expected_lookedat
 
-        # Evaluate the program several times, because evaluations are stochastic
-        for eval_run in range(self.config.num_eval_runs):
-            for index in range(batch_size):
-                # MSE for the loss
-                action = program(self.states[index])
-                desired_action = self.actions[index]
+            # Evaluate the program several times, because evaluations are stochastic
+            batch_size = self.states.shape[0]
+            sum_error = 0.0
 
-                sum_error += np.mean((action - desired_action) ** 2)
+            for eval_run in range(self.config.num_eval_runs):
+                for index in range(batch_size):
+                    # MSE for the loss
+                    action = program(self.states[index])
+                    desired_action = self.actions[index]
 
-        avg_error = (sum_error / (batch_size * self.config.num_eval_runs))
-        fitness = (1.0 - avg_error) * looked_proportion
+                    sum_error += np.mean((action - desired_action) ** 2)
+
+            avg_error = (sum_error / (batch_size * self.config.num_eval_runs))
+            fitness = (1.0 - avg_error) * looked_proportion
+        except InvalidProgramException:
+            fitness = -1000.0
 
         return fitness
 
@@ -72,7 +84,6 @@ class ProgramOptimizer:
             initial_population=self.initial_population,
             num_generations=self.config.num_generations,
             num_parents_mating=self.config.num_parents_mating,
-            keep_parents=self.config.keep_parents,
             mutation_probability=self.config.mutation_probability,
 
             # Work with non-deterministic objective functions

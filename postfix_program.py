@@ -45,24 +45,89 @@ OPERATORS = [
 ]
 NUM_OPERATORS = len(OPERATORS)
 
-class Program:
-    def __init__(self, genome):
-        self.tokens = genome
+class InvalidProgramException(Exception):
+    pass
 
-    def to_string(self, inp):
-        return repr(self.run_program(inp=inp, do_print=True))
+class Program:
+    def __init__(self, genome, state_dim):
+        self.tokens = genome
+        self.state_dim = state_dim
+
+    def to_string(self):
+        def on_literal_func(stack, token):
+            stack.append(f"±{token}")
+
+        def on_input_func(stack, input_index):
+            stack.append(f"x[{input_index}]")
+
+        def on_operator_func(stack, operator, operands):
+            # Put a string representation of the operator on the stack
+            if len(operands) == 1:
+                result = f"{operator.name}({operands[0]})"
+            elif operator.name in ['min', 'max']:
+                # two-operand operator that is a function call
+                result = f"{operator.name}({operands[0]}, {operands[1]})"
+            elif len(operands) == 2:
+                result = f"({operands[0]} {operator.name} {operands[1]})"
+            elif len(operands) == 4:
+                result = f"({operands[0]} < {operands[1]} ? {operands[2]} : {operands[3]})"
+
+            stack.append(result)
+
+        return self._visit_program(
+            on_literal_func=on_literal_func,
+            on_input_func=on_input_func,
+            on_operator_func=on_operator_func
+        )
 
     def __call__(self, inp):
-        return self.run_program(inp, do_print=False)
+        def on_literal_func(stack, token):
+            # Random sign. The program needs to wrap the literal in abs() or -abs() to set its sign
+            if np.random.random() < 0.5:
+                token = -token
+
+            stack.append(token)
+
+        def on_input_func(stack, input_index):
+            stack.append(inp[input_index])
+
+        def on_operator_func(stack, operator, operands):
+            result = operator.function(*operands)
+            stack.append(result)
+
+        return self._visit_program(
+            on_literal_func=on_literal_func,
+            on_input_func=on_input_func,
+            on_operator_func=on_operator_func
+        )
 
     def num_inputs_looked_at(self, state_vars):
+        def on_literal_func(stack, token):
+            stack.append(set([]))   # Literals don't look at inputs
+
+        def on_input_func(stack, input_index):
+            stack.append(set([input_index]))    # Inputs look at inputs
+
+        def on_operator_func(stack, operator, operands):
+            looked_at = set([])
+
+            for operand in operands:
+                looked_at.update(operand)       # Operands may look at inputs
+
+            stack.append(looked_at)
+
+        return len(self._visit_program(
+            on_literal_func=on_literal_func,
+            on_input_func=on_input_func,
+            on_operator_func=on_operator_func
+        ))
+
+    def _visit_program(self, on_literal_func, on_input_func, on_operator_func):
         stack = []
 
-        # Keep track of state variables looked at, but not actual results
         for token in self.tokens:
-            # Literal
             if token >= 0.0:
-                stack.append(set([]))
+                on_literal_func(stack, token)
                 continue
 
             # Now, cast token to an int, but with stochasticity so that a value
@@ -73,70 +138,10 @@ class Program:
             if token < -NUM_OPERATORS:
                 input_index = -token - NUM_OPERATORS - 1
 
-                # Silently ignore input variables beyond the end of inp
-                if input_index < state_vars:
-                    stack.append(set([input_index]))
-                else:
-                    stack.append(set([]))
+                if input_index >= self.state_dim:
+                    raise InvalidProgramException()
 
-                continue
-
-            # Operators
-            operator_index = -token - 1
-            operator = OPERATORS[operator_index]
-
-            # Pop the operands
-            operands = set([])
-
-            for index in range(operator.num_operands):
-                if len(stack) > 0:
-                    operands.update(stack.pop())
-
-            stack.append(operands)
-
-        if len(stack) == 0:
-            return 0
-        else:
-            return len(stack[-1])
-
-    def run_program(self, inp, do_print=False):
-        stack = []
-        functions = {operator.name: operator.function for operator in OPERATORS}
-
-        for token in self.tokens:
-            # Literal, push it with a random sign. The program has to use the make_pos() and make_neg() operators to fix the sign
-            if token >= 0.0:
-                if do_print:
-                    stack.append('+-' + str(token))
-                else:
-                    # Randomize the sign of the token
-                    if np.random.random() < 0.5:
-                        token = -token
-
-                    stack.append(token)
-
-                continue
-
-            # Now, cast token to an int, but with stochasticity so that a value
-            # close to x.5 is always cast to x, but other values may end up on x+1 or x-1
-            token = int(token + 0.498 * (np.random.random() - 0.5))
-
-            # Input variable
-            if token < -NUM_OPERATORS:
-                input_index = -token - NUM_OPERATORS - 1
-
-                # Silently ignore input variables beyond the end of inp
-                if input_index < len(inp):
-                    if do_print:
-                        stack.append(f'x[{input_index}]')
-                    else:
-                        stack.append(inp[input_index])
-                else:
-                    if do_print:
-                        stack.append('0.0')
-                    else:
-                        stack.append(0.0)
-
+                on_input_func(stack, input_index)
                 continue
 
             # Operators
@@ -148,43 +153,14 @@ class Program:
 
             for index in range(operator.num_operands):
                 if len(stack) == 0:
-                    operand = 0.0
-                else:
-                    operand = stack.pop()
+                    raise InvalidProgramException()
 
-                operands.append(operand)
+                operands.append(stack.pop())
 
-            if do_print:
-                # Put a string representation of the operator on the stack
-                if len(operands) == 1:
-                    result = f"{operator.name}({operands[0]})"
-                elif operator.name in ['min', 'max']:
-                    # two-operand operator that is a function call
-                    result = f"{operator.name}({operands[0]}, {operands[1]})"
-                elif len(operands) == 2:
-                    result = f"({operands[0]} {operator.name} {operands[1]})"
-                elif len(operands) == 4:
-                    result = f"({operands[0]} < {operands[1]} ? {operands[2]} : {operands[3]})"
-
-                # Simple constant propagation: if the resulting expression can be eval'd,
-                # it means that it only uses operators and constants, so we can simply
-                # show the program as the constant
-                try:
-                    result = str(eval(result, functions))
-                except:
-                    pass
-
-                stack.append(result)
-            else:
-                # Run the operator and get the result back
-                result = operator.function(*operands)
-                stack.append(result)
+            on_operator_func(stack, operator, operands)
 
         if len(stack) == 0:
-            if do_print:
-                stack.append('0.0')
-            else:
-                stack.append(0.0)
+            raise InvalidProgramException()
 
         return stack[-1]
 

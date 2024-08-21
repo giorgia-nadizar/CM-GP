@@ -73,13 +73,12 @@ class Args:
     """noise clip parameter of the Target Policy Smoothing Regularization"""
 
     # Parameters for the program optimizer
-    num_individuals: int = 40
+    num_individuals: int = 300
     num_genes: int = 5
-    num_eval_runs: int = 5
+    num_eval_runs: int = 2
 
-    num_generations: int = 100
-    num_parents_mating: int = 10
-    keep_parents: int = 10
+    num_generations: int = 20
+    num_parents_mating: int = 100
     mutation_probability: float = 0.1
 
 def make_env(env_id, seed, idx, capture_video, run_name):
@@ -113,10 +112,11 @@ def get_state_actions(program_optimizers, obs, env, args):
     for i, o in enumerate(obs):
         action = np.zeros(env.action_space.shape, dtype=np.float32)
 
-        for action_index in range(env.action_space.shape[0]):
-            action[action_index] += program_optimizers[action_index].get_action(o)
+        for i in range(20):
+            for action_index in range(env.action_space.shape[0]):
+                action[action_index] += program_optimizers[action_index].get_action(o)
 
-        program_actions.append(action)
+        program_actions.append(action / 20)
 
     return np.array(program_actions)
 
