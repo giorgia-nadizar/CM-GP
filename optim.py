@@ -42,28 +42,21 @@ class ProgramOptimizer:
 
         try:
             # Num input variables looked at
-            expected_lookedat = self.states.shape[1]
-            lookedat = 0.0
-
-            for i in range(100):
-                # This is a stochastic process
-                lookedat += program.num_inputs_looked_at(expected_lookedat)
-
-            looked_proportion = (lookedat / 100) / expected_lookedat
+            lookedat = program.num_inputs_looked_at()
+            looked_proportion = lookedat / self.state_dim
 
             # Evaluate the program several times, because evaluations are stochastic
             batch_size = self.states.shape[0]
             sum_error = 0.0
 
-            for eval_run in range(self.config.num_eval_runs):
-                for index in range(batch_size):
-                    # MSE for the loss
-                    action = program(self.states[index])
-                    desired_action = self.actions[index]
+            for index in range(batch_size):
+                # MSE for the loss
+                action = program(self.states[index])
+                desired_action = self.actions[index]
 
-                    sum_error += np.mean((action - desired_action) ** 2)
+                sum_error += np.mean((action - desired_action) ** 2)
 
-            avg_error = (sum_error / (batch_size * self.config.num_eval_runs))
+            avg_error = (sum_error / batch_size)
             fitness = (1.0 - avg_error) * looked_proportion
         except InvalidProgramException:
             fitness = -1000.0

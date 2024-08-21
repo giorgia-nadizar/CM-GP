@@ -1,14 +1,3 @@
-# x 2 + 2 * <end> <end>
-#
-# Literals         # positive
-# Operators        # negative, we have a finite number of them
-# Input variables  # negative, we can have many of them
-# <end>            # OPERATOR_END
-#
-# 1. PyGAD produces numpy arrays (lists of floats). Look at them in pairs of (mean, variance).
-#    sample a token from that normal distribution, and transform the sample to one
-#    of the tokens listed above
-# 2. Run that
 import math
 import numpy as np
 
@@ -57,9 +46,6 @@ class Program:
         def on_literal_func(stack, token):
             stack.append(f"±{token}")
 
-        def on_input_func(stack, input_index):
-            stack.append(f"x[{input_index}]")
-
         def on_operator_func(stack, operator, operands):
             # Put a string representation of the operator on the stack
             if len(operands) == 1:
@@ -75,8 +61,8 @@ class Program:
             stack.append(result)
 
         return self._visit_program(
+            init_func=lambda: [f"x[{i}]" for i in range(self.state_dim)] * 20,
             on_literal_func=on_literal_func,
-            on_input_func=on_input_func,
             on_operator_func=on_operator_func
         )
 
@@ -88,25 +74,25 @@ class Program:
 
             stack.append(token)
 
-        def on_input_func(stack, input_index):
-            stack.append(inp[input_index])
-
         def on_operator_func(stack, operator, operands):
             result = operator.function(*operands)
             stack.append(result)
 
-        return self._visit_program(
-            on_literal_func=on_literal_func,
-            on_input_func=on_input_func,
-            on_operator_func=on_operator_func
-        )
+        AVG = 500
+        x = 0.0
 
-    def num_inputs_looked_at(self, state_vars):
+        for i in range(AVG):
+            x += self._visit_program(
+                init_func=lambda: list(inp) * 20,
+                on_literal_func=on_literal_func,
+                on_operator_func=on_operator_func
+            )
+
+        return x / AVG
+
+    def num_inputs_looked_at(self):
         def on_literal_func(stack, token):
             stack.append(set([]))   # Literals don't look at inputs
-
-        def on_input_func(stack, input_index):
-            stack.append(set([input_index]))    # Inputs look at inputs
 
         def on_operator_func(stack, operator, operands):
             looked_at = set([])
@@ -117,13 +103,13 @@ class Program:
             stack.append(looked_at)
 
         return len(self._visit_program(
+            init_func=lambda: [set([i]) for i in range(self.state_dim)] * 20,
             on_literal_func=on_literal_func,
-            on_input_func=on_input_func,
             on_operator_func=on_operator_func
         ))
 
-    def _visit_program(self, on_literal_func, on_input_func, on_operator_func):
-        stack = []
+    def _visit_program(self, init_func, on_literal_func, on_operator_func):
+        stack = init_func()
 
         for token in self.tokens:
             if token >= 0.0:
@@ -132,20 +118,10 @@ class Program:
 
             # Now, cast token to an int, but with stochasticity so that a value
             # close to x.5 is always cast to x, but other values may end up on x+1 or x-1
-            token = int(token + 0.498 * (np.random.random() - 0.5))
-
-            # Input variable
-            if token < -NUM_OPERATORS:
-                input_index = -token - NUM_OPERATORS - 1
-
-                if input_index >= self.state_dim:
-                    raise InvalidProgramException()
-
-                on_input_func(stack, input_index)
-                continue
+            token = int(token + (np.random.random() - 0.5))
 
             # Operators
-            operator_index = -token - 1
+            operator_index = (-token - 1) % len(OPERATORS)
             operator = OPERATORS[operator_index]
 
             # Pop the operands
@@ -164,15 +140,49 @@ class Program:
 
         return stack[-1]
 
-if __name__ == '__main__':
+def dbg_average():
     # Compute the average output of programs
     values = []
 
     for l in range(20):
         for i in range(100000):
             dna = np.random.random((l,))
-            dna[0:-1:2] *= -(NUM_OPERATORS + 1)                 # Tokens between -NUM_OPERATORS - state_dim and 0
-            p = Program(dna)
-            values.append(p([]))
+            dna *= -(NUM_OPERATORS + 1)                 # Tokens between -NUM_OPERATORS - state_dim and 0
+            p = Program(dna, 1)
+
+            try:
+                values.append(p([0.0]))
+            except InvalidProgramException:
+                values.append(0.0)
 
         print('Average output of random programs of size', l, ':', np.mean(values), '+-', np.std(values))
+
+def dbg_random_functions():
+    import cv2
+
+    AVG = 1000
+
+    while True:
+        data = np.zeros((20, 20), dtype=np.float32)
+
+        dna = np.random.random((5,))
+        dna *= -(NUM_OPERATORS + 1)                 # Tokens between -NUM_OPERATORS - state_dim and 0
+        p = Program(dna, 2)
+
+        print(p.to_string())
+
+        for y in range(20):
+            for x in range(20):
+                data[y, x] = p([x / 20, y / 20])
+
+        print(data.std())
+        data -= data.min()
+        data /= data.max() + 1e-3
+
+        image = (data * 255).astype(np.uint8)
+        image = cv2.resize(image, (200, 200))
+        cv2.imshow('image', image)
+        cv2.waitKey(100)
+
+if __name__ == '__main__':
+    dbg_random_functions()
