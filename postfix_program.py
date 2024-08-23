@@ -41,10 +41,11 @@ class InvalidProgramException(Exception):
     pass
 
 class Program:
-    def __init__(self, genome, state_dim, action_space):
+    def __init__(self, genome, state_dim, low, high):
         self.tokens = genome
         self.state_dim = state_dim
-        self.action_space = action_space
+        self.low = low
+        self.high = high
 
     def to_string(self):
         def on_literal_func(stack, token):
@@ -96,7 +97,7 @@ class Program:
         x /= AVG
 
         # Clip action
-        x = np.clip(x, self.action_space.low, self.action_space.high)
+        x = np.clip(x, self.low, self.high)
         return x
 
     def num_inputs_looked_at(self):
@@ -157,7 +158,7 @@ def dbg_average():
         for i in range(100000):
             dna = np.random.random((l,))
             dna *= -(NUM_OPERATORS + 1)                 # Tokens between -NUM_OPERATORS - state_dim and 0
-            p = Program(dna, 1)
+            p = Program(dna, 1, -1.0, 1.0)
 
             try:
                 values.append(p([0.0]))
@@ -177,7 +178,7 @@ def dbg_random_functions():
 
         dna = np.random.random((5,))
         dna *= -(NUM_OPERATORS + 1)                 # Tokens between -NUM_OPERATORS - state_dim and 0
-        p = Program(dna, 2, gym.spaces.Box(low=0.0, high=1.0, shape=(1,)))
+        p = Program(dna, 2, 0.0, 1.0)
 
         print(p.to_string())
 

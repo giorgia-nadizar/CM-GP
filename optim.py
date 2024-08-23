@@ -11,9 +11,11 @@ def print_fitness(ga, fitnesses):
     print('F', fitnesses.mean(), file=sys.stderr)
 
 class ProgramOptimizer:
-    def __init__(self, config, state_space, action_space):
+    def __init__(self, config, state_space, low, high):
+        self.config = config
         self.state_dim = state_space.shape[0]
-        self.action_space = action_space
+        self.low = low
+        self.high = high
 
         # Create the initial population
         # We create it so these random programs try all the operators and read all the state variables
@@ -23,10 +25,8 @@ class ProgramOptimizer:
         self.best_solution = self.initial_population[0]
         self.best_fitness = None
 
-        self.config = config
-
     def get_action(self, state):
-        program = Program(self.best_solution, self.state_dim, self.action_space)
+        program = Program(self.best_solution, self.state_dim, self.low, self.high)
 
         try:
             return program(state)
@@ -34,7 +34,7 @@ class ProgramOptimizer:
             return np.random.normal()
 
     def get_best_solution_str(self):
-        program = Program(self.best_solution, self.state_dim, self.action_space)
+        program = Program(self.best_solution, self.state_dim, self.low, self.high)
 
         try:
             return program.to_string()
@@ -42,7 +42,7 @@ class ProgramOptimizer:
             return '<invalid program>'
 
     def _fitness_func(self, ga_instance, solution, solution_idx):
-        program = Program(solution, self.state_dim, self.action_space)
+        program = Program(solution, self.state_dim, self.low, self.high)
 
         try:
             # Num input variables looked at

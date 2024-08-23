@@ -152,7 +152,12 @@ def run_synthesis(args: Args):
     assert isinstance(env.action_space, gym.spaces.Box), "only continuous action space is supported"
 
     # Actor is a learnable program
-    program_optimizers = [ProgramOptimizer(args, env.observation_space, env.action_space) for i in range(env.action_space.shape[0])]
+    program_optimizers = [ProgramOptimizer(
+        args,
+        env.observation_space,
+        env.action_space.low[i],
+        env.action_space.high[i]
+    ) for i in range(env.action_space.shape[0])]
 
     for action_index in range(env.action_space.shape[0]):
         print(f"a[{action_index}] = {program_optimizers[action_index].get_best_solution_str()}")
@@ -247,7 +252,7 @@ def run_synthesis(args: Args):
                 cur_program_actions = np.copy(orig_program_actions)
                 print('BEFORE ACTIONS', orig_program_actions[0])
 
-                for i in range(10):
+                for i in range(50):
                     program_actions = torch.tensor(cur_program_actions, requires_grad=True)
 
                     program_objective_1 = qf1(data.observations, program_actions).mean()
