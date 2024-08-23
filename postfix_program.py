@@ -1,6 +1,9 @@
 import math
 import numpy as np
 
+def sgn(x):
+    return -1.0 if x < 0.0 else 1.0
+
 class Operator:
     def __init__(self, name, num_operands, function):
         self.name = name
@@ -11,26 +14,26 @@ class Operator:
         return self.name
 
 OPERATORS = [
-    Operator('abs', 1, lambda a: abs(a)),
-    Operator('-abs', 1, lambda a: -abs(a)),
-    Operator('sin', 1, lambda a: math.sin(a)),
-    Operator('-sin', 1, lambda a: -math.sin(a)),
-    Operator('cos', 1, lambda a: math.cos(a)),
-    Operator('-cos', 1, lambda a: -math.cos(a)),
+    Operator('reciprocal', 1, lambda a: 1 / a if abs(a) > 0.05 else 20.0 * sgn(a)),
     Operator('exp', 1, lambda a: math.exp(min(a, 10.0))),
-    Operator('-exp', 1, lambda a: -math.exp(min(a, 10.0))),
-    Operator('sqrt', 1, lambda a: math.sqrt(a) if a >= 0.0 else 0.0),
-    Operator('-sqrt', 1, lambda a: -math.sqrt(a) if a >= 0.0 else 0.0),
-    Operator('neg', 1, lambda a: -a),
-    Operator('+', 2, lambda a, b: a + b),
-    Operator('-', 2, lambda a, b: a - b),
-    Operator('*', 2, lambda a, b: a * b),
-    Operator('/', 2, lambda a, b: a / b if abs(b) > 0.01 else 0.0),
-    Operator('%', 2, lambda a, b: a % b if abs(b) > 0.01 else 0.0),
-    Operator('max', 2, lambda a, b: max(a, b)),
-    Operator('min', 2, lambda a, b: min(a, b)),
     Operator('trunc', 1, lambda a: float(int(a))),
-    Operator('ifsmaller', 4, lambda a, b, iftrue, iffalse: iftrue if a < b else iffalse),
+    Operator('abs', 1, lambda a: abs(a)),
+    Operator('sin', 1, lambda a: math.sin(a)),
+    Operator('sqrt', 1, lambda a: math.sqrt(a) if a >= 0.0 else 0.0),
+    Operator('cos', 1, lambda a: math.cos(a)),
+    Operator('neg', 1, lambda a: -a),
+    Operator('-abs', 1, lambda a: -abs(a)),
+    Operator('-sin', 1, lambda a: -math.sin(a)),
+    Operator('-sqrt', 1, lambda a: -math.sqrt(a) if a >= 0.0 else 0.0),
+    Operator('-cos', 1, lambda a: -math.cos(a)),
+    Operator('-exp', 1, lambda a: -math.exp(min(a, 10.0))),
+
+    Operator('min', 2, lambda a, b: min(a, b)),
+    Operator('max', 2, lambda a, b: max(a, b)),
+    Operator('+', 2, lambda a, b: a + b),
+    Operator('*', 2, lambda a, b: a * b),
+
+    Operator('select', 3, lambda a, iftrue, iffalse: iftrue if a > 0 else iffalse),
 ]
 NUM_OPERATORS = len(OPERATORS)
 
@@ -38,9 +41,10 @@ class InvalidProgramException(Exception):
     pass
 
 class Program:
-    def __init__(self, genome, state_dim):
+    def __init__(self, genome, state_dim, action_space):
         self.tokens = genome
         self.state_dim = state_dim
+        self.action_space = action_space
 
     def to_string(self):
         def on_literal_func(stack, token):
@@ -55,8 +59,9 @@ class Program:
                 result = f"{operator.name}({operands[0]}, {operands[1]})"
             elif len(operands) == 2:
                 result = f"({operands[0]} {operator.name} {operands[1]})"
-            elif len(operands) == 4:
-                result = f"({operands[0]} < {operands[1]} ? {operands[2]} : {operands[3]})"
+            elif len(operands) == 3:
+                # Ternary operator
+                result = f"({operands[1]} if {operands[0]} > 0 else {operands[2]})"
 
             stack.append(result)
 
@@ -78,7 +83,7 @@ class Program:
             result = operator.function(*operands)
             stack.append(result)
 
-        AVG = 500
+        AVG = 10
         x = 0.0
 
         for i in range(AVG):
@@ -88,7 +93,11 @@ class Program:
                 on_operator_func=on_operator_func
             )
 
-        return x / AVG
+        x /= AVG
+
+        # Clip action
+        x = np.clip(x, self.action_space.low, self.action_space.high)
+        return x
 
     def num_inputs_looked_at(self):
         def on_literal_func(stack, token):
@@ -159,6 +168,7 @@ def dbg_average():
 
 def dbg_random_functions():
     import cv2
+    import gymnasium as gym
 
     AVG = 1000
 
@@ -167,7 +177,7 @@ def dbg_random_functions():
 
         dna = np.random.random((5,))
         dna *= -(NUM_OPERATORS + 1)                 # Tokens between -NUM_OPERATORS - state_dim and 0
-        p = Program(dna, 2)
+        p = Program(dna, 2, gym.spaces.Box(low=0.0, high=1.0, shape=(1,)))
 
         print(p.to_string())
 

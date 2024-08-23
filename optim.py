@@ -7,22 +7,26 @@ from dataclasses import dataclass
 
 from postfix_program import Program, NUM_OPERATORS, InvalidProgramException
 
+def print_fitness(ga, fitnesses):
+    print('F', fitnesses.mean(), file=sys.stderr)
+
 class ProgramOptimizer:
-    def __init__(self, config, state_dim):
+    def __init__(self, config, state_space, action_space):
+        self.state_dim = state_space.shape[0]
+        self.action_space = action_space
 
         # Create the initial population
         # We create it so these random programs try all the operators and read all the state variables
         self.initial_population = np.random.random((config.num_individuals, config.num_genes))  # Random numbers between 0 and 1
-        self.initial_population *= -(NUM_OPERATORS + state_dim)         # Tokens between -NUM_OPERATORS - state_dim and 0
+        self.initial_population *= -(NUM_OPERATORS + self.state_dim)         # Tokens between -NUM_OPERATORS - state_dim and 0
 
         self.best_solution = self.initial_population[0]
         self.best_fitness = None
 
         self.config = config
-        self.state_dim = state_dim
 
     def get_action(self, state):
-        program = Program(self.best_solution, self.state_dim)
+        program = Program(self.best_solution, self.state_dim, self.action_space)
 
         try:
             return program(state)
@@ -30,7 +34,7 @@ class ProgramOptimizer:
             return np.random.normal()
 
     def get_best_solution_str(self):
-        program = Program(self.best_solution, self.state_dim)
+        program = Program(self.best_solution, self.state_dim, self.action_space)
 
         try:
             return program.to_string()
@@ -38,7 +42,7 @@ class ProgramOptimizer:
             return '<invalid program>'
 
     def _fitness_func(self, ga_instance, solution, solution_idx):
-        program = Program(solution, self.state_dim)
+        program = Program(solution, self.state_dim, self.action_space)
 
         try:
             # Num input variables looked at
@@ -54,7 +58,7 @@ class ProgramOptimizer:
                 action = program(self.states[index])
                 desired_action = self.actions[index]
 
-                sum_error += np.mean((action - desired_action) ** 2)
+                sum_error += (action - desired_action) ** 2
 
             avg_error = (sum_error / batch_size)
             fitness = (1.0 - avg_error) * looked_proportion
@@ -86,10 +90,12 @@ class ProgramOptimizer:
             random_mutation_min_val=-10,
             random_mutation_max_val=10,
 
-            parent_selection_type="rank",
+            parent_selection_type="sss",
             crossover_type="single_point",
             mutation_type="random",
-            parallel_processing=["process", None]
+            parallel_processing=["process", None],
+
+            on_fitness=print_fitness
         )
 
         self.ga_instance.run()

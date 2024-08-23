@@ -61,23 +61,23 @@ class Args:
     """the discount factor gamma"""
     tau: float = 0.005
     """target smoothing coefficient (default: 0.005)"""
-    batch_size: int = 512
+    batch_size: int = 256
     """the batch size of sample from the reply memory"""
-    policy_noise: float = 0.2
+    policy_noise: float = 0.1
     """the scale of policy noise"""
     learning_starts: int = 2000
     """timestep to start learning"""
-    policy_frequency: int = 512
+    policy_frequency: int = 128
     """the frequency of training policy (delayed)"""
     noise_clip: float = 0.5
     """noise clip parameter of the Target Policy Smoothing Regularization"""
 
     # Parameters for the program optimizer
-    num_individuals: int = 100
+    num_individuals: int = 50
     num_genes: int = 5
 
     num_generations: int = 20
-    num_parents_mating: int = 50
+    num_parents_mating: int = 20
     mutation_probability: float = 0.1
 
 def make_env(env_id, seed, idx, capture_video, run_name):
@@ -114,7 +114,6 @@ def get_state_actions(program_optimizers, obs, env, args):
         for action_index in range(env.action_space.shape[0]):
             action[action_index] = program_optimizers[action_index].get_action(o)
 
-        action = np.clip(action, env.action_space.low, env.action_space.high)
         program_actions.append(action)
 
     return np.array(program_actions)
@@ -153,7 +152,7 @@ def run_synthesis(args: Args):
     assert isinstance(env.action_space, gym.spaces.Box), "only continuous action space is supported"
 
     # Actor is a learnable program
-    program_optimizers = [ProgramOptimizer(args, env.observation_space.shape[0]) for i in range(env.action_space.shape[0])]
+    program_optimizers = [ProgramOptimizer(args, env.observation_space, env.action_space) for i in range(env.action_space.shape[0])]
 
     for action_index in range(env.action_space.shape[0]):
         print(f"a[{action_index}] = {program_optimizers[action_index].get_best_solution_str()}")
@@ -244,21 +243,30 @@ def run_synthesis(args: Args):
 
             # Optimize the program
             if global_step % args.policy_frequency == 0:
-                program_actions = get_state_actions(program_optimizers, data.observations.detach().numpy(), env, args)
-                program_actions = torch.tensor(program_actions, requires_grad=True)
+                orig_program_actions = get_state_actions(program_optimizers, data.observations.detach().numpy(), env, args)
+                cur_program_actions = np.copy(orig_program_actions)
+                print('BEFORE ACTIONS', orig_program_actions[0])
 
-                program_objective_1 = qf1(data.observations, program_actions).mean()
-                program_objective_2 = qf2(data.observations, program_actions).mean()
-                program_objective = (program_objective_1 + program_objective_2) * 0.5
-                program_objective.backward()
+                for i in range(10):
+                    program_actions = torch.tensor(cur_program_actions, requires_grad=True)
 
-                improved_actions = program_actions + program_actions.grad
+                    program_objective_1 = qf1(data.observations, program_actions).mean()
+                    program_objective_2 = qf2(data.observations, program_actions).mean()
+                    program_objective = (program_objective_1 + program_objective_2) * 0.5
+                    program_objective.backward()
 
-                RES.append(improved_actions[0].detach().numpy())
+                    with torch.no_grad():
+                        cur_program_actions += program_actions.grad.numpy()
+
+                    if np.abs(cur_program_actions - orig_program_actions).mean() > 0.1:
+                        break
+
+                print('    TARGET', cur_program_actions[0])
+                RES.append(cur_program_actions[0])
 
                 # Fit the program optimizers on all the action dimensions
                 states = data.observations.detach().numpy()
-                actions = improved_actions.detach().numpy()
+                actions = cur_program_actions
 
                 print('Best program:')
                 writer.add_scalar("losses/program_objective", program_objective.item(), global_step)
