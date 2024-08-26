@@ -78,7 +78,7 @@ class Args:
 
     num_generations: int = 20
     num_parents_mating: int = 20
-    mutation_probability: float = 0.1
+    mutation_probability: float = 0.05
 
 def make_env(env_id, seed, idx, capture_video, run_name):
     if capture_video and idx == 0:

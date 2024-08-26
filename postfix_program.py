@@ -13,7 +13,11 @@ class Operator:
     def __str__(self):
         return self.name
 
+ID = Operator('id', 1, lambda a: a)
 OPERATORS = [
+    ID,
+    ID,
+    ID,
     Operator('reciprocal', 1, lambda a: 1 / a if abs(a) > 0.05 else 20.0 * sgn(a)),
     Operator('exp', 1, lambda a: math.exp(min(a, 10.0))),
     Operator('trunc', 1, lambda a: float(int(a))),
@@ -21,21 +25,31 @@ OPERATORS = [
     Operator('sin', 1, lambda a: math.sin(a)),
     Operator('sqrt', 1, lambda a: math.sqrt(a) if a >= 0.0 else 0.0),
     Operator('cos', 1, lambda a: math.cos(a)),
+    ID,
+    ID,
+    ID,
     Operator('neg', 1, lambda a: -a),
     Operator('-abs', 1, lambda a: -abs(a)),
     Operator('-sin', 1, lambda a: -math.sin(a)),
     Operator('-sqrt', 1, lambda a: -math.sqrt(a) if a >= 0.0 else 0.0),
     Operator('-cos', 1, lambda a: -math.cos(a)),
     Operator('-exp', 1, lambda a: -math.exp(min(a, 10.0))),
+    ID,
+    ID,
+    ID,
 
     Operator('min', 2, lambda a, b: min(a, b)),
     Operator('max', 2, lambda a, b: max(a, b)),
     Operator('+', 2, lambda a, b: a + b),
     Operator('*', 2, lambda a, b: a * b),
+    ID,
+    ID,
+    ID,
 
     Operator('select', 3, lambda a, iftrue, iffalse: iftrue if a > 0 else iffalse),
 ]
 NUM_OPERATORS = len(OPERATORS)
+ID_INDEX = [i for i in range(NUM_OPERATORS) if OPERATORS[i] is ID][0]
 
 class InvalidProgramException(Exception):
     pass
@@ -53,7 +67,10 @@ class Program:
 
         def on_operator_func(stack, operator, operands):
             # Put a string representation of the operator on the stack
-            if len(operands) == 1:
+            if operator.name == 'id':
+                # Identity
+                result = operands[0]
+            elif len(operands) == 1:
                 result = f"{operator.name}({operands[0]})"
             elif operator.name in ['min', 'max']:
                 # two-operand operator that is a function call
