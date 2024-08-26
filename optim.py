@@ -2,6 +2,7 @@ import sys
 
 import pygad
 import numpy as np
+import ctypes
 import pyrallis
 from dataclasses import dataclass
 
@@ -22,6 +23,9 @@ class ProgramOptimizer:
 
         self.best_solution = self.initial_population[0]
         self.best_fitness = None
+
+        self.len_episodes = np.ndarray(config.num_individuals)
+        self.fitness_pop = np.ndarray(config.num_individuals)
 
     def get_action(self, state):
         program = Program(self.best_solution, self.state_dim, self.low, self.high)
@@ -65,12 +69,32 @@ class ProgramOptimizer:
 
         return fitness
 
+    def _fitness_func_env(self, ga_instance, solution, solution_idx):
+        program = Program(solution, self.state_dim, self.low, self.high)
+
+        fitness = 0.0
+        l = 0
+        terminated, truncated = False, False
+        obs, _ = self.env.reset()
+        while not terminated or not truncated:
+            l += 1
+            action = program(obs)
+            obs, reward, terminated, truncated, info = self.env.step(action)
+            fitness += reward
+            if terminated or truncated:
+                break
+        self.len_episodes[solution_idx] = l
+        self.fitness_pop[solution_idx] = fitness
+        return fitness
+
     def fit(self, states, actions):
         """ states is a batch of states, shape (N, state_shape)
             actions is a batch of actions, shape (N,), we assume continuous actions
 
             NOTE: One ProgramOptimizer has to be used for each action dimension
         """
+        self.len_episodes = np.ndarray(self.config.num_individuals)
+        self.fitness_pop = np.ndarray(self.config.num_individuals)
         self.states = states        # picklable self._fitness_func needs these instance variables
         self.actions = actions
 
@@ -91,7 +115,7 @@ class ProgramOptimizer:
             parent_selection_type="sss",
             crossover_type="single_point",
             mutation_type="random",
-            parallel_processing=["process", None],
+            #parallel_processing=["process", 1],
 
             on_fitness=print_fitness
         )
