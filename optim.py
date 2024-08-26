@@ -88,7 +88,7 @@ class ProgramOptimizer:
             if terminated or truncated:
                 break
         self.len_episodes[solution_idx] = l
-        self.fitness_pop[solution_idx] = l
+        self.fitness_pop[solution_idx] = fitness
         return fitness
 
     def fit(self, states, actions):
