@@ -6,6 +6,7 @@ import pyrallis
 from dataclasses import dataclass
 
 from postfix_program import Program, NUM_OPERATORS, InvalidProgramException
+from copy import deepcopy
 
 def print_fitness(ga, fitnesses):
     print('F', fitnesses.mean(), file=sys.stderr)
@@ -65,6 +66,21 @@ class ProgramOptimizer:
         except InvalidProgramException:
             fitness = -1000.0
 
+        return fitness
+
+    def _fitness_func_env(self, ga_instance, solution, solution_idx):
+        program = Program(solution, self.state_dim, self.low, self.high)
+
+        fitness = 0.0
+        terminated, truncated = False, False
+        env = deepcopy(self.env)
+        obs, _ = env.reset()
+        while not terminated or not truncated:
+            action = program(obs)
+            obs, reward, terminated, truncated, info = env.step(action)
+            fitness += reward
+            if terminated or truncated:
+                break
         return fitness
 
     def fit(self, states, actions):
