@@ -213,6 +213,11 @@ def run_synthesis(args: Args):
                 for action_index in range(env.action_space.shape[0]):
                     program_optimizers[action_index].fit(states, actions[:, action_index])
                     print(f"a[{action_index}] = {program_optimizers[action_index].get_best_solution_str()}")
+                    # Add interactions during optimization
+                    for pf, le in zip(program_optimizers[action_index].fitness_pop, program_optimizers[action_index].len_episodes):
+                        global_step += le
+                        writer.add_scalar("charts/episodic_return", pf, global_step)
+                        #writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
 
                 writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
 
