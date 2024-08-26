@@ -30,9 +30,9 @@ class Args:
     """if toggled, `torch.backends.cudnn.deterministic=False`"""
     cuda: bool = False
     """if toggled, cuda will be enabled by default"""
-    track: bool = False
+    track: bool = True
     """if toggled, this experiment will be tracked with Weights and Biases"""
-    wandb_project_name: str = "cleanRL_program_synth"
+    wandb_project_name: str = "direct_GP"
     """the wandb's project name"""
     wandb_entity: str = None
     """the entity (team) of wandb's project"""
@@ -48,7 +48,7 @@ class Args:
     # Algorithm specific arguments
     env_id: str = "SimpleGoal-v0"
     """the id of the environment"""
-    total_timesteps: int = 1000000000
+    total_timesteps: int = 100_000
     """total timesteps of the experiments"""
     learning_rate: float = 3e-4
     """the learning rate of the optimizer"""
@@ -70,11 +70,11 @@ class Args:
     """noise clip parameter of the Target Policy Smoothing Regularization"""
 
     # Parameters for the program optimizer
-    num_individuals: int = 50
+    num_individuals: int = 100
     num_genes: int = 5
 
-    num_generations: int = 20
-    num_parents_mating: int = 20
+    num_generations: int = 10
+    num_parents_mating: int = 80
     mutation_probability: float = 0.1
 
 def make_env(env_id, seed, idx, capture_video, run_name):
