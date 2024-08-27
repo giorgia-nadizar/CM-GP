@@ -19,7 +19,6 @@ from optim import ProgramOptimizer
 from postfix_program import Program, NUM_OPERATORS, InvalidProgramException
 import envs
 
-
 @dataclass
 class Args:
     exp_name: str = os.path.basename(__file__)[: -len(".py")]
@@ -30,7 +29,7 @@ class Args:
     """if toggled, `torch.backends.cudnn.deterministic=False`"""
     cuda: bool = False
     """if toggled, cuda will be enabled by default"""
-    track: bool = True
+    track: bool = False
     """if toggled, this experiment will be tracked with Weights and Biases"""
     wandb_project_name: str = "direct_GP"
     """the wandb's project name"""
@@ -48,7 +47,7 @@ class Args:
     # Algorithm specific arguments
     env_id: str = "SimpleGoal-v0"
     """the id of the environment"""
-    total_timesteps: int = 100_000
+    total_timesteps: int = 1_000
     """total timesteps of the experiments"""
     learning_rate: float = 3e-4
     """the learning rate of the optimizer"""
@@ -62,7 +61,7 @@ class Args:
     """the batch size of sample from the reply memory"""
     policy_noise: float = 0.1
     """the scale of policy noise"""
-    learning_starts: int = 2000
+    learning_starts: int = 1
     """timestep to start learning"""
     policy_frequency: int = 128
     """the frequency of training policy (delayed)"""
@@ -74,7 +73,7 @@ class Args:
     num_genes: int = 5
 
     num_generations: int = 10
-    num_parents_mating: int = 80
+    num_parents_mating: int = 8
     mutation_probability: float = 0.1
 
 def make_env(env_id, seed, idx, capture_video, run_name):
@@ -102,6 +101,8 @@ def get_state_actions(program_optimizers, obs, env, args):
 
 @pyrallis.wrap()
 def run_synthesis(args: Args):
+    N_INTERACTIONS = 0
+
     run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
     if args.track:
         import wandb
@@ -163,6 +164,7 @@ def run_synthesis(args: Args):
     # TRY NOT TO MODIFY: start the game
     obs, _ = env.reset(seed=args.seed)
 
+
     for global_step in range(args.total_timesteps):
 
         # ALGO LOGIC: put action logic here
@@ -176,11 +178,12 @@ def run_synthesis(args: Args):
 
         # TRY NOT TO MODIFY: execute the game and log data.
         next_obs, reward, termination, truncation, info = env.step(action)
+        N_INTERACTIONS += 1
 
         # TRY NOT TO MODIFY: record rewards for plotting purposes
         if 'episode' in info:
             print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
-            writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
+            writer.add_scalar("charts/episodic_return", info["episode"]["r"], N_INTERACTIONS)
             writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
 
         # TRY NOT TO MODIFY: save data to reply buffer; handle `final_observation`
@@ -215,8 +218,9 @@ def run_synthesis(args: Args):
                     print(f"a[{action_index}] = {program_optimizers[action_index].get_best_solution_str()}")
                     # Add interactions during optimization
                     for pf, le in zip(program_optimizers[action_index].fitness_pop, program_optimizers[action_index].len_episodes):
-                        global_step += le
-                        writer.add_scalar("charts/episodic_return", pf, global_step)
+                        N_INTERACTIONS += sum(le)
+                        #print(N_INTERACTIONS)
+                        writer.add_scalar("charts/episodic_return", sum(pf)/(args.num_generations + 1), N_INTERACTIONS)
                         #writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
 
                 writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)

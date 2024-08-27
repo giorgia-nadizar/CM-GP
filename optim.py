@@ -27,8 +27,9 @@ class ProgramOptimizer:
         self.best_solution = self.initial_population[0]
         self.best_fitness = None
 
-        self.len_episodes = np.ndarray(config.num_individuals)
-        self.fitness_pop = np.ndarray(config.num_individuals)
+        self.len_episodes = np.ndarray((config.num_individuals, self.config.num_generations + 1))
+        self.len_episodes = [[] for i in range(self.config.num_individuals)]
+        self.fitness_pop = [[] for i in range(self.config.num_individuals)]
 
     def get_action(self, state):
         program = Program(self.best_solution, self.state_dim, self.low, self.high)
@@ -87,8 +88,8 @@ class ProgramOptimizer:
             fitness += reward
             if terminated or truncated:
                 break
-        self.len_episodes[solution_idx] = l
-        self.fitness_pop[solution_idx] = fitness
+        self.len_episodes[solution_idx].append(l)
+        self.fitness_pop[solution_idx].append(fitness)
         return fitness
 
     def fit(self, states, actions):
@@ -97,8 +98,8 @@ class ProgramOptimizer:
 
             NOTE: One ProgramOptimizer has to be used for each action dimension
         """
-        self.len_episodes = np.ndarray(self.config.num_individuals)
-        self.fitness_pop = np.ndarray(self.config.num_individuals)
+        self.len_episodes = [[] for i in range(self.config.num_individuals)]
+        self.fitness_pop = [[] for i in range(self.config.num_individuals)]
         self.states = states        # picklable self._fitness_func needs these instance variables
         self.actions = actions
 
