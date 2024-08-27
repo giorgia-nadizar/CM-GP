@@ -6,8 +6,7 @@ import ctypes
 import pyrallis
 from dataclasses import dataclass
 
-from postfix_program import Program, NUM_OPERATORS, InvalidProgramException
-from copy import deepcopy
+from postfix_program import *
 
 def print_fitness(ga, fitnesses):
     print('F', fitnesses.mean(), file=sys.stderr)
@@ -19,10 +18,8 @@ class ProgramOptimizer:
         self.low = low
         self.high = high
 
-        # Create the initial population
-        # We create it so these random programs try all the operators and read all the state variables
-        self.initial_population = np.random.random((config.num_individuals, config.num_genes))  # Random numbers between 0 and 1
-        self.initial_population *= -(NUM_OPERATORS + self.state_dim)         # Tokens between -NUM_OPERATORS - state_dim and 0
+        # Create the initial population of only identities
+        self.initial_population = (-ID_INDEX - 1 - 0.5) * np.ones((config.num_individuals, config.num_genes))
 
         self.best_solution = self.initial_population[0]
         self.best_fitness = None
@@ -79,12 +76,11 @@ class ProgramOptimizer:
         fitness = 0.0
         l = 0
         terminated, truncated = False, False
-        env = deepcopy(self.env)
-        obs, _ = env.reset()
+        obs, _ = self.env.reset()
         while not terminated or not truncated:
             l += 1
             action = program(obs)
-            obs, reward, terminated, truncated, info = env.step(action)
+            obs, reward, terminated, truncated, info = self.env.step(action)
             fitness += reward
             if terminated or truncated:
                 break
