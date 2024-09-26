@@ -1,4 +1,3 @@
- # docs and experiment results can be found at https://docs.cleanrl.dev/rl-algorithms/td3/#td3_continuous_actionpy
 import os
 import random
 import time
@@ -17,11 +16,8 @@ from torch.utils.tensorboard import SummaryWriter
 from torch.autograd import grad
 
 from optim import ProgramOptimizer
-
+from postfix_program import Program, NUM_OPERATORS, InvalidProgramException
 import envs
-
-
-RES = []
 
 @dataclass
 class Args:
@@ -35,7 +31,7 @@ class Args:
     """if toggled, cuda will be enabled by default"""
     track: bool = False
     """if toggled, this experiment will be tracked with Weights and Biases"""
-    wandb_project_name: str = "cleanRL_program_synth"
+    wandb_project_name: str = "direct_GP"
     """the wandb's project name"""
     wandb_entity: str = None
     """the entity (team) of wandb's project"""
@@ -51,7 +47,7 @@ class Args:
     # Algorithm specific arguments
     env_id: str = "SimpleGoal-v0"
     """the id of the environment"""
-    total_timesteps: int = 1000000000
+    total_timesteps: int = 1_000
     """total timesteps of the experiments"""
     learning_rate: float = 3e-4
     """the learning rate of the optimizer"""
@@ -65,7 +61,7 @@ class Args:
     """the batch size of sample from the reply memory"""
     policy_noise: float = 0.1
     """the scale of policy noise"""
-    learning_starts: int = 2000
+    learning_starts: int = 1
     """timestep to start learning"""
     policy_frequency: int = 128
     """the frequency of training policy (delayed)"""
@@ -73,12 +69,12 @@ class Args:
     """noise clip parameter of the Target Policy Smoothing Regularization"""
 
     # Parameters for the program optimizer
-    num_individuals: int = 50
+    num_individuals: int = 100
     num_genes: int = 5
 
-    num_generations: int = 20
-    num_parents_mating: int = 20
-    mutation_probability: float = 0.05
+    num_generations: int = 10
+    num_parents_mating: int = 8
+    mutation_probability: float = 0.1
 
 def make_env(env_id, seed, idx, capture_video, run_name):
     if capture_video and idx == 0:
@@ -89,21 +85,6 @@ def make_env(env_id, seed, idx, capture_video, run_name):
     env = gym.wrappers.RecordEpisodeStatistics(env)
     env.action_space.seed(seed)
     return env
-
-
-# ALGO LOGIC: initialize agent here:
-class QNetwork(nn.Module):
-    def __init__(self, env):
-        super().__init__()
-        self.fc1 = nn.Linear(np.array(env.observation_space.shape).prod() + np.prod(env.action_space.shape), 128)
-        self.fc3 = nn.Linear(128, 1)
-
-    def forward(self, x, a):
-        x = torch.cat([x, a], 1)
-        x = F.relu(self.fc1(x))
-        x = self.fc3(x)
-        return x
-
 
 def get_state_actions(program_optimizers, obs, env, args):
     program_actions = []
@@ -120,6 +101,8 @@ def get_state_actions(program_optimizers, obs, env, args):
 
 @pyrallis.wrap()
 def run_synthesis(args: Args):
+    N_INTERACTIONS = 0
+
     run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
     if args.track:
         import wandb
@@ -159,16 +142,14 @@ def run_synthesis(args: Args):
         env.action_space.high[i]
     ) for i in range(env.action_space.shape[0])]
 
+
+    # Add env reference to the ProgramOptimizer (dirty)
+    for p in program_optimizers:
+        p.env = env
+        p._fitness_func = p._fitness_func_env
+
     for action_index in range(env.action_space.shape[0]):
         print(f"a[{action_index}] = {program_optimizers[action_index].get_best_solution_str()}")
-
-    qf1 = QNetwork(env).to(device)
-    qf2 = QNetwork(env).to(device)
-    qf1_target = QNetwork(env).to(device)
-    qf2_target = QNetwork(env).to(device)
-    qf1_target.load_state_dict(qf1.state_dict())
-    qf2_target.load_state_dict(qf2.state_dict())
-    q_optimizer = optim.Adam(list(qf1.parameters()) + list(qf2.parameters()), lr=args.learning_rate)
 
     env.observation_space.dtype = np.float32
     rb = ReplayBuffer(
@@ -183,6 +164,7 @@ def run_synthesis(args: Args):
     # TRY NOT TO MODIFY: start the game
     obs, _ = env.reset(seed=args.seed)
 
+
     for global_step in range(args.total_timesteps):
 
         # ALGO LOGIC: put action logic here
@@ -196,11 +178,12 @@ def run_synthesis(args: Args):
 
         # TRY NOT TO MODIFY: execute the game and log data.
         next_obs, reward, termination, truncation, info = env.step(action)
+        N_INTERACTIONS += 1
 
         # TRY NOT TO MODIFY: record rewards for plotting purposes
         if 'episode' in info:
             print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
-            writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
+            writer.add_scalar("charts/episodic_return", info["episode"]["r"], N_INTERACTIONS)
             writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
 
         # TRY NOT TO MODIFY: save data to reply buffer; handle `final_observation`
@@ -217,90 +200,34 @@ def run_synthesis(args: Args):
         # ALGO LOGIC: training.
         if global_step > args.learning_starts:
             data = rb.sample(args.batch_size)
-            with torch.no_grad():
-                clipped_noise = (torch.randn_like(data.actions, device=device) * args.policy_noise).clamp(
-                    -args.noise_clip, args.noise_clip
-                )
-
-                # Go over all observations the buffer provides
-                next_state_actions = get_state_actions(program_optimizers, data.next_observations.detach().numpy(), env, args)
-                next_state_actions = torch.tensor(next_state_actions)
-                next_state_actions = (next_state_actions + clipped_noise).clamp(
-                    env.action_space.low[0], env.action_space.high[0]).float()
-
-                qf1_next_target = qf1_target(data.next_observations, next_state_actions)
-                qf2_next_target = qf2_target(data.next_observations, next_state_actions)
-                min_qf_next_target = torch.min(qf1_next_target, qf2_next_target)
-                next_q_value = data.rewards.flatten() + (1 - data.dones.flatten()) * args.gamma * (
-                    min_qf_next_target).view(-1)
-
-            qf1_a_values = qf1(data.observations, data.actions).view(-1)
-            qf2_a_values = qf2(data.observations, data.actions).view(-1)
-            qf1_loss = F.mse_loss(qf1_a_values, next_q_value)
-            qf2_loss = F.mse_loss(qf2_a_values, next_q_value)
-            qf_loss = qf1_loss + qf2_loss
-            #print(f'Loss critic: {qf1_loss}')
-
-            # optimize the model
-            q_optimizer.zero_grad()
-            qf_loss.backward()
-            q_optimizer.step()
 
             # Optimize the program
             if global_step % args.policy_frequency == 0:
-                orig_program_actions = get_state_actions(program_optimizers, data.observations.detach().numpy(), env, args)
+                orig_program_actions = get_state_actions(program_optimizers, data.observations.detach().numpy(), env,
+                                                         args)
                 cur_program_actions = np.copy(orig_program_actions)
-                print('BEFORE ACTIONS', orig_program_actions[0])
-
-                for i in range(50):
-                    program_actions = torch.tensor(cur_program_actions, requires_grad=True)
-
-                    program_objective_1 = qf1(data.observations, program_actions).mean()
-                    program_objective_2 = qf2(data.observations, program_actions).mean()
-                    program_objective = (program_objective_1 + program_objective_2) * 0.5
-                    program_objective.backward()
-
-                    with torch.no_grad():
-                        cur_program_actions += program_actions.grad.numpy()
-
-                    if np.abs(cur_program_actions - orig_program_actions).mean() > 0.1:
-                        break
-
-                print('    TARGET', cur_program_actions[0])
-                RES.append(cur_program_actions[0])
 
                 # Fit the program optimizers on all the action dimensions
                 states = data.observations.detach().numpy()
                 actions = cur_program_actions
 
                 print('Best program:')
-                writer.add_scalar("losses/program_objective", program_objective.item(), global_step)
 
                 for action_index in range(env.action_space.shape[0]):
                     program_optimizers[action_index].fit(states, actions[:, action_index])
                     print(f"a[{action_index}] = {program_optimizers[action_index].get_best_solution_str()}")
+                    # Add interactions during optimization
+                    for pf, le in zip(program_optimizers[action_index].fitness_pop, program_optimizers[action_index].len_episodes):
+                        N_INTERACTIONS += sum(le)
+                        #print(N_INTERACTIONS)
+                        writer.add_scalar("charts/episodic_return", sum(pf)/(args.num_generations + 1), N_INTERACTIONS)
+                        #writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
 
-            # update the target network
-            for param, target_param in zip(qf1.parameters(), qf1_target.parameters()):
-                target_param.data.copy_(args.tau * param.data + (1 - args.tau) * target_param.data)
-            for param, target_param in zip(qf2.parameters(), qf2_target.parameters()):
-                target_param.data.copy_(args.tau * param.data + (1 - args.tau) * target_param.data)
-
-            if global_step % 10 == 0:
-                writer.add_scalar("losses/qf1_values", qf1_a_values.mean().item(), global_step)
-                writer.add_scalar("losses/qf2_values", qf2_a_values.mean().item(), global_step)
-                writer.add_scalar("losses/qf1_loss", qf1_loss.item(), global_step)
-                writer.add_scalar("losses/qf2_loss", qf2_loss.item(), global_step)
-                writer.add_scalar("losses/qf_loss", qf_loss.item() / 2.0, global_step)
                 writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
+
 
     env.close()
     writer.close()
-
-    import matplotlib.pyplot as plt
-    plt.plot(RES)
-    plt.show()
-
 
 if __name__ == "__main__":
     run_synthesis()

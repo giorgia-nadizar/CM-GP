@@ -2,132 +2,129 @@ import sys
 
 import pygad
 import numpy as np
+import ctypes
 import pyrallis
 from dataclasses import dataclass
 
-from postfix_program import Program, NUM_OPERATORS
+from postfix_program import *
 
-N_INPUT_VARIABLES = 1
+def print_fitness(ga, fitnesses):
+    print('F', fitnesses.mean(), file=sys.stderr)
 
 class ProgramOptimizer:
-    def __init__(self, config):
+    def __init__(self, config, state_space, low, high):
+        self.config = config
+        self.state_dim = state_space.shape[0]
+        self.low = low
+        self.high = high
 
-        # Create the initial population
-        self.initial_program = [-1.0] * config.num_genes
+        # Create the initial population of only identities
+        self.initial_population = (-ID_INDEX - 1 - 0.5) * np.ones((config.num_individuals, config.num_genes))
 
-        self.best_solution = self.initial_program
+        self.best_solution = self.initial_population[0]
         self.best_fitness = None
 
-        self.config = config
-        self.initial_population = [np.array(self.initial_program) for i in range(config.num_individuals)]
+        self.len_episodes = np.ndarray((config.num_individuals, self.config.num_generations + 1))
+        self.len_episodes = [[] for i in range(self.config.num_individuals)]
+        self.fitness_pop = [[] for i in range(self.config.num_individuals)]
 
-        self.f = None
+    def get_action(self, state):
+        program = Program(self.best_solution, self.state_dim, self.low, self.high)
 
-    def get_best_program(self):
-        return Program(genome=self.best_solution)
+        try:
+            return program(state)
+        except InvalidProgramException:
+            return np.random.normal()
+
+    def get_best_solution_str(self):
+        program = Program(self.best_solution, self.state_dim, self.low, self.high)
+
+        try:
+            return program.to_string()
+        except InvalidProgramException:
+            return '<invalid program>'
+
+    def _fitness_func(self, ga_instance, solution, solution_idx):
+        program = Program(solution, self.state_dim, self.low, self.high)
+
+        try:
+            # Num input variables looked at
+            lookedat = program.num_inputs_looked_at()
+            looked_proportion = lookedat / self.state_dim
+
+            # Evaluate the program several times, because evaluations are stochastic
+            batch_size = self.states.shape[0]
+            sum_error = 0.0
+
+            for index in range(batch_size):
+                # MSE for the loss
+                action = program(self.states[index])
+                desired_action = self.actions[index]
+
+                sum_error += (action - desired_action) ** 2
+
+            avg_error = (sum_error / batch_size)
+            fitness = (1.0 - avg_error) * looked_proportion
+        except InvalidProgramException:
+            fitness = -1000.0
+
+        return fitness
+
+    def _fitness_func_env(self, ga_instance, solution, solution_idx):
+        program = Program(solution, self.state_dim, self.low, self.high)
+
+        fitness = 0.0
+        l = 0
+        terminated, truncated = False, False
+        obs, _ = self.env.reset()
+        while not terminated or not truncated:
+            l += 1
+            action = program(obs)
+            obs, reward, terminated, truncated, info = self.env.step(action)
+            fitness += reward
+            if terminated or truncated:
+                break
+        self.len_episodes[solution_idx].append(l)
+        self.fitness_pop[solution_idx].append(fitness)
+        return fitness
 
     def fit(self, states, actions):
         """ states is a batch of states, shape (N, state_shape)
-            actions is a batch of actions, shape (N, action_shape), we assume continuous actions
+            actions is a batch of actions, shape (N,), we assume continuous actions
+
+            NOTE: One ProgramOptimizer has to be used for each action dimension
         """
+        self.len_episodes = [[] for i in range(self.config.num_individuals)]
+        self.fitness_pop = [[] for i in range(self.config.num_individuals)]
+        self.states = states        # picklable self._fitness_func needs these instance variables
+        self.actions = actions
 
-        def fitness_func(ga_instance, solution, solution_idx):
-            batch_size = states.shape[0]
-            action_size = actions.shape[1]
-            sum_error = 0.0
+        self.ga_instance = pygad.GA(
+            fitness_func=self._fitness_func,
+            initial_population=self.initial_population,
+            num_generations=self.config.num_generations,
+            num_parents_mating=self.config.num_parents_mating,
+            mutation_probability=self.config.mutation_probability,
 
-            program = Program(genome=solution)
+            # Work with non-deterministic objective functions
+            keep_elitism=0,
+            save_solutions=False,
+            save_best_solutions=False,
+            random_mutation_min_val=-10,
+            random_mutation_max_val=10,
 
-            for index in range(batch_size):
-                action = program(states[index], len_output=action_size)
-                desired_action = actions[index]
+            parent_selection_type="sss",
+            crossover_type="single_point",
+            mutation_type="random",
+            #parallel_processing=["process", 1],
 
-                sum_error += np.mean((action - desired_action) ** 2)
-
-            fitness = -(sum_error / batch_size)
-
-            # !!!!
-            if self.best_fitness is None or fitness > self.best_fitness:
-                self.best_solution = solution
-                self.best_fitness = fitness
-
-            #print('F', fitness, file=sys.stderr)
-            return fitness
-
-
-        self.ga_instance = pygad.GA(num_generations=self.config.num_generations,
-                                    #parallel_processing=8,
-                                    save_solutions=True,
-                                    save_best_solutions=True,
-                                    num_parents_mating=self.config.num_parents_mating,
-                                    fitness_func=fitness_func,
-                                    initial_population=self.initial_population,
-                                    parent_selection_type="sss",
-                                    keep_parents=self.config.keep_parents,
-                                    crossover_type="single_point",
-                                    mutation_type="random",
-                                    mutation_percent_genes=self.config.mutation_percent_genes,
-                                    random_mutation_max_val=5,
-                                    random_mutation_min_val=-5,
-                                    gene_space={
-                                        'low': -NUM_OPERATORS - N_INPUT_VARIABLES,
-                                        'high': 1.0
-                                    },
-                                    keep_elitism=1,
-                                    )
+            on_fitness=print_fitness
+        )
 
         self.ga_instance.run()
 
         # Allow the population to survive
         self.initial_population = self.ga_instance.population
-        self.f = self.ga_instance.population
 
-        # Print the best individual
-        #program = self.get_best_program()
-        #print(program(states[0], do_print=True))
-        #self.ga_instance.plot_fitness()
-
-
-@dataclass
-class Config:
-    num_individuals: int = 1000
-    num_genes: int = 10
-
-    num_generations: int = 20
-    num_parents_mating: int = 10
-    keep_parents: int = 5
-    mutation_percent_genes: int = 10
-    keep_elites: int = 5
-
-
-@pyrallis.wrap()
-def main(config: Config):
-    optim = ProgramOptimizer(config)
-
-    # Sample states and actions
-    #states = np.array([
-    #    [1.0],
-    #    [2.0],
-    #    [-5.0],
-    #    [10.0],
-    #])
-
-    #states = np.array([[1.0, 2.0], [2.0, 4.0]])
-    #actions = np.array([[3.0], [6.0]])
-
-    states = np.random.random_sample((10, 2))
-    actions = np.sum(states, axis=1)
-    actions = np.reshape(actions, (10, 1))
-
-    #states = np.load('runs/InvertedPendulum-v4__TD3__1__1720706887/TD3.cleanrl_model_OBSERVATIONS.npy')
-    #actions = np.load('runs/InvertedPendulum-v4__TD3__1__1720706887/TD3.cleanrl_model_ACTIONS.npy')
-
-    # Fit
-    optim.fit(states, actions)
-
-    # Plot
-    optim.ga_instance.plot_fitness()
-
-
-if __name__ == '__main__':
-    main()
+        # Best solution for now
+        self.best_solution = self.ga_instance.best_solution()[0]
