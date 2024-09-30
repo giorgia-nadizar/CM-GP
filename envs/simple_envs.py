@@ -154,3 +154,74 @@ class SimpleGoalEnv(gym.Env):
             done = True
 
         return self.state, reward, done or (self._timestep > 50), False, {}
+
+
+class SimpleGoalEnvSpeed(gym.Env):
+    """ Continuous navigation task: observe (x, y, speed_x, speed_y), produce (dx, dy), and aim at reaching (0, 0). The range of observations is [0, 1] (so we try to reach a corner)
+    """
+
+    def __init__(self):
+        super().__init__()
+
+        # Position + speed
+        self.observation_space = gym.spaces.Box(
+            low=np.zeros((4,)),
+            high=np.ones((4,))
+        )
+
+        # Acceleration
+        self.action_space = gym.spaces.Box(
+            low=-np.ones((2,)),
+            high=np.ones((2,))
+        )
+
+        self.state = np.zeros((4,), dtype=np.float32)
+
+    def reset(self, **kwargs):
+        # position
+        self.state[0] = random.random()
+        self.state[1] = random.random()
+        # speed
+        self.state[2], self.state[3] = 0, 0
+
+        self._timestep = 0
+
+        return self.state, {}
+
+    def step(self, a):
+        def distance_to_goal(s):
+            # The goal is 0, 0, so the distance to goal is sqrt(self.state^2)
+            return np.sqrt((s ** 2).sum())
+
+        a = np.clip(a, -1.0, 1.0)
+
+        # Add acceleration to speed
+        self.state[2] += a[0]
+        self.state[3] += a[1]
+
+        old_d = distance_to_goal(self.state)
+
+        # Add speed to position
+        self.state[0] = np.clip(self.state[0] + 0.1*self.state[2], 0.0, 1.0)
+        self.state[1] = np.clip(self.state[1] + 0.1*self.state[3], 0.0, 1.0)
+
+        new_d = distance_to_goal(self.state)
+
+        x, y, speed_x, speed_y = self.state
+        reward = 10. * (old_d - new_d)  # Reward for getting closer to the goal
+
+        self._timestep += 1
+
+        done = False
+
+        if x < 0.1 and y < 0.1:
+            # Close enough to the goal
+            reward = 10.0
+            done = True
+
+        if 0.4 < x < 0.6 and 0.4 < y < 0.6:
+            # Obstacle in the middle, punish the agent
+            reward = -10.0
+            done = True
+
+        return self.state, reward, done or (self._timestep > 50), False, {}
