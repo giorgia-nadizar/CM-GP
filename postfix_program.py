@@ -14,6 +14,13 @@ class Operator:
         return self.name
 
 ID = Operator('id', 1, lambda a: a)
+
+#OPERATORS = [
+#    Operator('throttle_north', 1)
+#    Operator('select', 3, lambda a, iftrue, iffalse: iftrue if a > 0 else iffalse),
+#]
+
+
 OPERATORS = [
     ID,
     ID,
@@ -48,6 +55,39 @@ OPERATORS = [
 
     Operator('select', 3, lambda a, iftrue, iffalse: iftrue if a > 0 else iffalse),
 ]
+
+# Operators
+# - Turn left
+# - Turn right
+# - Accelerate
+# - Decelerate
+#
+#
+#
+
+OPERATORS = [
+    ID,
+    Operator('select', 3, lambda a, iftrue, iffalse: iftrue if a > 0 else iffalse),
+    ID,
+    Operator('ACCELERATE_↑', 1, lambda a:  a + 0.1),
+    Operator('ACCELERATE_↑↑', 1, lambda a:  a + 0.5),
+    Operator('ACCELERATE_↑↑↑', 1, lambda a:  a + 1.0),
+    Operator('DECELERATE_↓', 1, lambda a:  a - 0.1),
+    Operator('DECELERATE_↓↓', 1, lambda a:  a - 0.5),
+    Operator('DECELERATE_↓↓↓', 1, lambda a:  a - 1.0),
+    ID,
+    Operator('+', 2, lambda a, b: a + b),
+    Operator('*', 2, lambda a, b: a * b),
+    ID
+]
+
+#OPERATORS = [
+#    Operator('abs', 1, lambda a: abs(a)),
+#    ID,
+#    Operator('-abs', 1, lambda a: -abs(a)),
+#]
+
+
 NUM_OPERATORS = len(OPERATORS)
 ID_INDEX = [i for i in range(NUM_OPERATORS) if OPERATORS[i] is ID][0]
 

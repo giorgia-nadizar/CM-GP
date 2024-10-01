@@ -49,7 +49,7 @@ class Args:
     """the user or org name of the model repository from the Hugging Face Hub"""
 
     # Algorithm specific arguments
-    env_id: str = "SimpleGoal-v0"
+    env_id: str = "SimpleGoalSpeed-v0"
     """the id of the environment"""
     total_timesteps: int = 1000000000
     """total timesteps of the experiments"""
@@ -65,7 +65,7 @@ class Args:
     """the batch size of sample from the reply memory"""
     policy_noise: float = 0.1
     """the scale of policy noise"""
-    learning_starts: int = 2000
+    learning_starts: int = 1000
     """timestep to start learning"""
     policy_frequency: int = 128
     """the frequency of training policy (delayed)"""
@@ -73,11 +73,11 @@ class Args:
     """noise clip parameter of the Target Policy Smoothing Regularization"""
 
     # Parameters for the program optimizer
-    num_individuals: int = 50
-    num_genes: int = 5
+    num_individuals: int = 100
+    num_genes: int = 20
 
-    num_generations: int = 20
-    num_parents_mating: int = 20
+    num_generations: int = 30
+    num_parents_mating: int = 80
     mutation_probability: float = 0.05
 
 def make_env(env_id, seed, idx, capture_video, run_name):
@@ -252,7 +252,7 @@ def run_synthesis(args: Args):
                 cur_program_actions = np.copy(orig_program_actions)
                 print('BEFORE ACTIONS', orig_program_actions[0])
 
-                for i in range(50):
+                for i in range(500):
                     program_actions = torch.tensor(cur_program_actions, requires_grad=True)
 
                     program_objective_1 = qf1(data.observations, program_actions).mean()
@@ -263,7 +263,7 @@ def run_synthesis(args: Args):
                     with torch.no_grad():
                         cur_program_actions += program_actions.grad.numpy()
 
-                    if np.abs(cur_program_actions - orig_program_actions).mean() > 0.1:
+                    if np.abs(cur_program_actions - orig_program_actions).mean() > 0.5:
                         break
 
                 print('    TARGET', cur_program_actions[0])
