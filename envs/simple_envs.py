@@ -143,6 +143,11 @@ class SimpleGoalEnv(gym.Env):
 
         done = False
 
+        if x in (0, 1) or y in (0, 1):
+            # At border, which is punished
+            reward = -10.0
+            done = True
+
         if x < 0.1 and y < 0.1:
             # Close enough to the goal
             reward = 10.0
@@ -213,6 +218,11 @@ class SimpleGoalEnvSpeed(gym.Env):
         self._timestep += 1
 
         done = False
+
+        #if x in (0, 1) or y in (0, 1):
+        #    # At border, which is punished
+        #    reward = -10.0
+        #    done = True
 
         if x < 0.1 and y < 0.1:
             # Close enough to the goal
