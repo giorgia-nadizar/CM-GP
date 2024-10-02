@@ -107,7 +107,7 @@ class ProgramOptimizer:
             mutation_probability=self.config.mutation_probability,
 
             # Work with non-deterministic objective functions
-            keep_elitism=5,
+            keep_elitism=0,
             save_solutions=False,
             save_best_solutions=False,
             random_mutation_min_val=-10,
@@ -116,7 +116,7 @@ class ProgramOptimizer:
             parent_selection_type="sss",
             crossover_type="single_point",
             mutation_type="random",
-            #parallel_processing=["process", 1],
+            parallel_processing=["process", 20],
 
             on_fitness=print_fitness
         )

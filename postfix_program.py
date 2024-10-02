@@ -69,12 +69,12 @@ OPERATORS = [
     ID,
     Operator('select', 3, lambda a, iftrue, iffalse: iftrue if a > 0 else iffalse),
     ID,
-    Operator('ACCELERATE_↑', 1, lambda a:  a + 0.1),
-    Operator('ACCELERATE_↑↑', 1, lambda a:  a + 0.5),
-    Operator('ACCELERATE_↑↑↑', 1, lambda a:  a + 1.0),
-    Operator('DECELERATE_↓', 1, lambda a:  a - 0.1),
-    Operator('DECELERATE_↓↓', 1, lambda a:  a - 0.5),
-    Operator('DECELERATE_↓↓↓', 1, lambda a:  a - 1.0),
+    Operator('ACCELERATE_↑', 0, lambda :  0.1),
+    Operator('ACCELERATE_↑↑', 0, lambda :  0.5),
+    Operator('ACCELERATE_↑↑↑', 0, lambda :  1.0),
+    Operator('DECELERATE_↓', 0, lambda :  -0.1),
+    Operator('DECELERATE_↓↓', 0, lambda :  -0.5),
+    Operator('DECELERATE_↓↓↓', 0, lambda : -1.0),
     ID,
     Operator('+', 2, lambda a, b: a + b),
     Operator('*', 2, lambda a, b: a * b),
@@ -110,6 +110,8 @@ class Program:
             if operator.name == 'id':
                 # Identity
                 result = operands[0]
+            elif len(operands) == 0:
+                result = f"{operator.name}"
             elif len(operands) == 1:
                 result = f"{operator.name}({operands[0]})"
             elif operator.name in ['min', 'max']:
@@ -193,7 +195,7 @@ class Program:
 
             # Pop the operands
             operands = []
-
+            
             for index in range(operator.num_operands):
                 if len(stack) == 0:
                     raise InvalidProgramException()
