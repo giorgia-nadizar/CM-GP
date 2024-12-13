@@ -58,6 +58,7 @@ class ProgramOptimizer:
 
             for index in range(batch_size):
                 # MSE for the loss
+                #[!2] Retrieve proposed actions and calculate the distance with more optimal actions
                 action = program(self.states[index])
                 desired_action = self.actions[index]
 
@@ -88,6 +89,9 @@ class ProgramOptimizer:
         self.fitness_pop[solution_idx].append(fitness)
         return fitness
 
+    # [!2] Optimization is to minimize the distance between program proposed action and the improved action, calculated
+    # using the gradients of the critic. The actions parameter is the list of optimal actions. Proposed actions are
+    # retrieved in the fitness function (line 61 above)
     def fit(self, states, actions):
         """ states is a batch of states, shape (N, state_shape)
             actions is a batch of actions, shape (N,), we assume continuous actions

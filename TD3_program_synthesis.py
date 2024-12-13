@@ -105,6 +105,11 @@ class QNetwork(nn.Module):
         return x
 
 
+# [!1] This is a helper function to retrieve proposed actions for each action variable, given a list of observations.
+# A program is in our implementation is responsible for only 1 action variable. So, to optimize the actor for an action
+# space of size two, 2 separate optimizers are used, each having a population to be optimized for the respective
+# variable.
+
 def get_state_actions(program_optimizers, obs, env, args):
     program_actions = []
 
@@ -205,6 +210,8 @@ def run_synthesis(args: Args):
 
         # TRY NOT TO MODIFY: save data to reply buffer; handle `final_observation`
         real_next_obs = next_obs.copy()
+
+        # [!1] Buffer is filled with experiences, also used for the genetic algorithm
         rb.add(obs, real_next_obs, action, reward, termination, info)
 
         # RESET
@@ -248,10 +255,12 @@ def run_synthesis(args: Args):
 
             # Optimize the program
             if global_step % args.policy_frequency == 0:
+                # [!1] Use helper function to retrieve proposed actions from the optimizers
                 orig_program_actions = get_state_actions(program_optimizers, data.observations.detach().numpy(), env, args)
                 cur_program_actions = np.copy(orig_program_actions)
                 print('BEFORE ACTIONS', orig_program_actions[0])
 
+                # [!1][!2] The calculation of a more optimal action, given the proposed action of the actor
                 for i in range(500):
                     program_actions = torch.tensor(cur_program_actions, requires_grad=True)
 
@@ -261,7 +270,7 @@ def run_synthesis(args: Args):
                     program_objective.backward()
 
                     with torch.no_grad():
-                        cur_program_actions += program_actions.grad.numpy()
+                        cur_program_actions += program_actions.grad.numpy() # [!2] Actual calculation using the gradient
 
                     if np.abs(cur_program_actions - orig_program_actions).mean() > 0.5:
                         break
@@ -276,7 +285,12 @@ def run_synthesis(args: Args):
                 print('Best program:')
                 writer.add_scalar("losses/program_objective", program_objective.item(), global_step)
 
+                # [!1] Each action variable has an optimizer to generate a program controlling that variable
                 for action_index in range(env.action_space.shape[0]):
+                    # [!2] The fitting is the actual optimization process, where the genetic algorithm iterates on the
+                    # population of candidates inside each optimizer (--> see ./optim.py).
+                    # Given actions to the fit method are the ones more calculated with the gradients above. Inside the
+                    # optimizer, the program proposed actions are retrieved for all states of the states argument.
                     program_optimizers[action_index].fit(states, actions[:, action_index])
                     print(f"a[{action_index}] = {program_optimizers[action_index].get_best_solution_str()}")
 
