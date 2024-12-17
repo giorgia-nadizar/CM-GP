@@ -5,7 +5,6 @@ dm-haiku==0.0.5
 flax==0.6.0
 glfw==2.5.0
 GPy==1.10.0
-gym==0.26.2
 gymnasium==1.0.0
 h5py==3.6.0
 imageio==2.14.1
