@@ -36,3 +36,4 @@ ttkbootstrap==1.5.1
 typing==3.7.4.3
 typing-extensions==4.3.0
 tyro==0.9.2
+wandb==0.19.1
