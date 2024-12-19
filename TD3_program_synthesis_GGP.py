@@ -1,8 +1,9 @@
- # docs and experiment results can be found at https://docs.cleanrl.dev/rl-algorithms/td3/#td3_continuous_actionpy
+# docs and experiment results can be found at https://docs.cleanrl.dev/rl-algorithms/td3/#td3_continuous_actionpy
 import os
 import random
 import time
 from dataclasses import dataclass
+
 import pyrallis
 
 import gymnasium as gym
@@ -14,14 +15,15 @@ import torch.optim as optim
 
 from stable_baselines3.common.buffers import ReplayBuffer
 from torch.utils.tensorboard import SummaryWriter
-from torch.autograd import grad
+from typing import Dict
 
-from optim import ProgramOptimizer
+from ggp_optim import GraphProgramOptimizer
 
 import envs
-
+from ggpax.run_utils import update_config_with_data
 
 RES = []
+
 
 @dataclass
 class Args:
@@ -80,6 +82,7 @@ class Args:
     num_parents_mating: int = 80
     mutation_probability: float = 0.05
 
+
 def make_env(env_id, seed, idx, capture_video, run_name):
     if capture_video and idx == 0:
         env = gym.make(env_id, render_mode="rgb_array")
@@ -110,21 +113,9 @@ class QNetwork(nn.Module):
 # space of size two, 2 separate optimizers are used, each having a population to be optimized for the respective
 # variable.
 
-def get_state_actions(program_optimizers, obs, env, args):
-    program_actions = []
-
-    for i, o in enumerate(obs):
-        action = np.zeros(env.action_space.shape, dtype=np.float32)
-
-        for action_index in range(env.action_space.shape[0]):
-            action[action_index] = program_optimizers[action_index].get_action(o)
-
-        program_actions.append(action)
-
-    return np.array(program_actions)
 
 @pyrallis.wrap()
-def run_synthesis(args: Args):
+def run_synthesis_ggp(args: Args, ggp_config: Dict):
     run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
     if args.track:
         import wandb
@@ -157,15 +148,12 @@ def run_synthesis(args: Args):
     assert isinstance(env.action_space, gym.spaces.Box), "only continuous action space is supported"
 
     # Actor is a learnable program
-    program_optimizers = [ProgramOptimizer(
-        args,
+    program_optimizer = GraphProgramOptimizer(
+        ggp_config,
         env.observation_space,
-        env.action_space.low[i],
-        env.action_space.high[i]
-    ) for i in range(env.action_space.shape[0])]
-
-    for action_index in range(env.action_space.shape[0]):
-        print(f"a[{action_index}] = {program_optimizers[action_index].get_best_solution_str()}")
+        env.action_space
+    )
+    print(program_optimizer.get_best_solution_str())
 
     qf1 = QNetwork(env).to(device)
     qf2 = QNetwork(env).to(device)
@@ -195,8 +183,8 @@ def run_synthesis(args: Args):
             action = env.action_space.sample()
         else:
             with torch.no_grad():
-                action = get_state_actions(program_optimizers, obs[None, :], env, args)[0]
-                action = np.random.normal(loc=action, scale=args.policy_noise)
+                action = program_optimizer.get_actions(obs)
+                # action = np.random.normal(loc=action, scale=args.policy_noise)
                 print('ACTION', action)
 
         # TRY NOT TO MODIFY: execute the game and log data.
@@ -230,11 +218,10 @@ def run_synthesis(args: Args):
                 )
 
                 # Go over all observations the buffer provides
-                next_state_actions = get_state_actions(program_optimizers, data.next_observations.detach().numpy(), env, args)
-                next_state_actions = torch.tensor(next_state_actions)
+                next_state_actions = program_optimizer.get_actions(data.next_observations.detach().numpy())
+                next_state_actions = torch.tensor(np.asarray(next_state_actions))
                 next_state_actions = (next_state_actions + clipped_noise).clamp(
                     env.action_space.low[0], env.action_space.high[0]).float()
-
                 qf1_next_target = qf1_target(data.next_observations, next_state_actions)
                 qf2_next_target = qf2_target(data.next_observations, next_state_actions)
                 min_qf_next_target = torch.min(qf1_next_target, qf2_next_target)
@@ -246,7 +233,7 @@ def run_synthesis(args: Args):
             qf1_loss = F.mse_loss(qf1_a_values, next_q_value)
             qf2_loss = F.mse_loss(qf2_a_values, next_q_value)
             qf_loss = qf1_loss + qf2_loss
-            #print(f'Loss critic: {qf1_loss}')
+            # print(f'Loss critic: {qf1_loss}')
 
             # optimize the model
             q_optimizer.zero_grad()
@@ -256,7 +243,7 @@ def run_synthesis(args: Args):
             # Optimize the program
             if global_step % args.policy_frequency == 0:
                 # [!1] Use helper function to retrieve proposed actions from the optimizers
-                orig_program_actions = get_state_actions(program_optimizers, data.observations.detach().numpy(), env, args)
+                orig_program_actions = program_optimizer.get_actions(data.observations.detach().numpy())
                 cur_program_actions = np.copy(orig_program_actions)
                 print('BEFORE ACTIONS', orig_program_actions[0])
 
@@ -270,7 +257,7 @@ def run_synthesis(args: Args):
                     program_objective.backward()
 
                     with torch.no_grad():
-                        cur_program_actions += program_actions.grad.numpy() # [!2] Actual calculation using the gradient
+                        cur_program_actions += program_actions.grad.numpy()  # [!2] Actual calculation using the gradient
 
                     if np.abs(cur_program_actions - orig_program_actions).mean() > 0.5:
                         break
@@ -286,13 +273,9 @@ def run_synthesis(args: Args):
                 writer.add_scalar("losses/program_objective", program_objective.item(), global_step)
 
                 # [!1] Each action variable has an optimizer to generate a program controlling that variable
-                for action_index in range(env.action_space.shape[0]):
-                    # [!2] The fitting is the actual optimization process, where the genetic algorithm iterates on the
-                    # population of candidates inside each optimizer (--> see ./optim.py).
-                    # Given actions to the fit method are the ones more calculated with the gradients above. Inside the
-                    # optimizer, the program proposed actions are retrieved for all states of the states argument.
-                    program_optimizers[action_index].fit(states, actions[:, action_index])
-                    print(f"a[{action_index}] = {program_optimizers[action_index].get_best_solution_str()}")
+                program_optimizer.fit(states, actions)
+
+                print(program_optimizer.get_best_solution_str())
 
             # update the target network
             for param, target_param in zip(qf1.parameters(), qf1_target.parameters()):
@@ -317,4 +300,21 @@ def run_synthesis(args: Args):
 
 
 if __name__ == "__main__":
-    run_synthesis()
+    ggp_cfg = {
+        "n_individuals": 100,
+        "seed": 0,
+        "solver": "cgp",
+        "mutation": "standard",
+        "n_nodes": 50,
+        "selection": {
+            "elite_size": 10,
+            "tour_size": 3,
+            "type": "tournament"
+        },
+        "survival": "truncation",
+        "p_mut_functions": 0.1,
+        "p_mut_inputs": 0.1,
+        "p_mut_outputs": 0.3,
+        "num_generations": 30
+    }
+    run_synthesis_ggp(ggp_config=ggp_cfg)
