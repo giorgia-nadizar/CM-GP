@@ -1,14 +1,10 @@
 import asyncio
 import copy
-import functools
 from datetime import datetime
 from functools import partial, reduce
 from typing import List, Callable, Tuple, Dict, Union, Set
 
 import telegram
-from brax import envs
-from brax.envs import ant
-from brax.envs.wrappers import EpisodeWrapper
 
 from jax import vmap, jit, random
 import jax.numpy as jnp
@@ -17,46 +13,10 @@ from ggpax.control_evaluation import evaluate_cgp_genome, evaluate_cgp_genome_n_
     evaluate_lgp_genome_n_times
 from ggpax.functions import function_set_control, constants
 from ggpax.selection import truncation_selection, tournament_selection, fp_selection, composed_selection
-from ggpax.tracker import Tracker
 from ggpax.standard import individual
 from ggpax.standard.individual import levels_back_transformation_function
 from ggpax.utils import identity
 from ggpax.weighted import encoding_weighted, individual_weighted
-
-
-def init_environment(env_name: str, episode_length: int, terminate_when_unhealthy: bool = True) -> EpisodeWrapper:
-    if env_name == "miniant":
-        env = functools.partial(ant.Ant, use_contact_forces=False)(terminate_when_unhealthy=terminate_when_unhealthy)
-    else:
-        try:
-            env = envs.get_environment(env_name=env_name, terminate_when_unhealthy=terminate_when_unhealthy)
-        except TypeError:
-            env = envs.get_environment(env_name=env_name)
-    env = EpisodeWrapper(env, episode_length=episode_length, action_repeat=1)
-    return env
-
-
-def init_environment_from_config(config: Dict) -> EpisodeWrapper:
-    return init_environment(config["problem"]["environment"], config["problem"]["episode_length"],
-                            config.get("unhealthy_termination", True))
-
-
-def init_environments(config: Dict) -> List[Dict]:
-    n_steps = config["problem"]["incremental_steps"]
-    min_duration = config["problem"]["min_length"]
-    step_size = (config["problem"]["episode_length"] - min_duration) / (n_steps - 1)
-    gen_step_size = int(config["n_generations"] / n_steps)
-    return [
-        {
-            "start_gen": gen_step_size * n,
-            "env": init_environment(env_name=config["problem"]["environment"],
-                                    episode_length=(min_duration + int(step_size * n))
-                                    ),
-            "fitness_scaler": config["problem"]["episode_length"] / (min_duration + int(step_size * n)),
-            "duration": (min_duration + int(step_size * n))
-        }
-        for n in range(n_steps)
-    ]
 
 
 def update_config_with_data(config: Dict, input_space_size: int, output_space_size: int,
@@ -102,7 +62,7 @@ def compute_parallel_runs_indexes(n_individuals: int, n_parallel_runs: int, n_el
     return indexes.astype(int)
 
 
-def compile_genome_evaluation(config: Dict, env: EpisodeWrapper, episode_length: int) -> Callable:
+def compile_genome_evaluation(config: Dict, env, episode_length: int) -> Callable:
     if config["solver"] == "cgp":
         eval_func, eval_n_times_func = evaluate_cgp_genome, evaluate_cgp_genome_n_times
         w_encoding_func = encoding_weighted.genome_to_cgp_program
