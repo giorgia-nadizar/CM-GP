@@ -1,13 +1,19 @@
-import functools
+from functools import partial
 from brax import envs
 from brax.envs import ant
 from brax.envs.wrappers import EpisodeWrapper
-from typing import List, Dict
+from typing import List, Dict, Callable
+
+from jax import vmap, jit
+
+from ggpax.control_evaluation import evaluate_cgp_genome, evaluate_cgp_genome_n_times, evaluate_lgp_genome, \
+    evaluate_lgp_genome_n_times
+from ggpax.weighted import encoding_weighted
 
 
 def init_environment(env_name: str, episode_length: int, terminate_when_unhealthy: bool = True) -> EpisodeWrapper:
     if env_name == "miniant":
-        env = functools.partial(ant.Ant, use_contact_forces=False)(terminate_when_unhealthy=terminate_when_unhealthy)
+        env = partial(ant.Ant, use_contact_forces=False)(terminate_when_unhealthy=terminate_when_unhealthy)
     else:
         try:
             env = envs.get_environment(env_name=env_name, terminate_when_unhealthy=terminate_when_unhealthy)
@@ -38,3 +44,23 @@ def init_environments(config: Dict) -> List[Dict]:
         }
         for n in range(n_steps)
     ]
+
+
+def compile_genome_evaluation(config: Dict, env, episode_length: int) -> Callable:
+    if config["solver"] == "cgp":
+        eval_func, eval_n_times_func = evaluate_cgp_genome, evaluate_cgp_genome_n_times
+        w_encoding_func = encoding_weighted.genome_to_cgp_program
+    else:
+        eval_func, eval_n_times_func = evaluate_lgp_genome, evaluate_lgp_genome_n_times
+        w_encoding_func = encoding_weighted.genome_to_lgp_program
+    if config["n_evals_per_individual"] == 1:
+        partial_eval_genome = partial(eval_func, config=config, env=env, episode_length=episode_length)
+    else:
+        partial_eval_genome = partial(eval_n_times_func, config=config, env=env,
+                                      n_times=config["n_evals_per_individual"], episode_length=episode_length)
+
+    if config.get("weighted_connections", False):
+        partial_eval_genome = partial(partial_eval_genome, genome_encoder=w_encoding_func)
+
+    vmap_evaluate_genome = vmap(partial_eval_genome, in_axes=(0, 0))
+    return jit(vmap_evaluate_genome)
