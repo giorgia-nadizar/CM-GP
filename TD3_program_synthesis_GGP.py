@@ -317,4 +317,12 @@ if __name__ == "__main__":
         "p_mut_outputs": 0.3,
         "num_generations": 30
     }
+
+    # for LGP
+    # "solver": "lgp",
+    # "n_extra_registers": 5,
+    # "n_rows": 15,
+    # "p_mut_lhs": 0.3,
+    # "p_mut_rhs": 0.1,
+
     run_synthesis_ggp(ggp_config=ggp_cfg)
